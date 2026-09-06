@@ -6,7 +6,9 @@ import type { PDFProcessor, PDFProcessingResult } from "@/services/pdf/types"
 import type { OCRService } from "@/services/ocr/ocrService"
 import type { AnalysisService } from "@/services/ai/analysisService"
 import type { ChunkingService } from "@/services/chunking"
+import type { EmbeddingService } from "@/services/embedding"
 import { AIError } from "@/services/ai/types"
+import { EmbeddingError } from "@/services/embedding"
 import type { ProcessingJobRecord } from "@/db/schema"
 
 export interface WorkerJobResult {
@@ -28,6 +30,7 @@ export class DocumentWorker {
   private ocrService?: OCRService
   private analysisService?: AnalysisService
   private chunkingService?: ChunkingService
+  private embeddingService?: EmbeddingService
   private autoAnalyze: boolean = false
   private isRunning = false
 
@@ -40,7 +43,8 @@ export class DocumentWorker {
     ocrService?: OCRService,
     analysisService?: AnalysisService,
     autoAnalyze: boolean = false,
-    chunkingService?: ChunkingService
+    chunkingService?: ChunkingService,
+    embeddingService?: EmbeddingService
   ) {
     this.documentRepo = documentRepo
     this.jobRepo = jobRepo
@@ -51,6 +55,7 @@ export class DocumentWorker {
     this.analysisService = analysisService
     this.autoAnalyze = autoAnalyze
     this.chunkingService = chunkingService
+    this.embeddingService = embeddingService
   }
 
   /**
@@ -72,6 +77,13 @@ export class DocumentWorker {
    */
   setChunkingService(chunkingService: ChunkingService): void {
     this.chunkingService = chunkingService
+  }
+
+  /**
+   * Set or update the Embedding service on this worker
+   */
+  setEmbeddingService(embeddingService: EmbeddingService): void {
+    this.embeddingService = embeddingService
   }
 
 
@@ -116,6 +128,39 @@ export class DocumentWorker {
   }
 
   /**
+   * Idempotently enqueues an embedding job for a document.
+   * If an embedding job is already pending or processing, returns that job instead of creating a duplicate.
+   */
+  async enqueueEmbeddingJob(documentId: string): Promise<ProcessingJobRecord> {
+    const document = await this.documentRepo.findById(documentId)
+    if (!document) {
+      throw new Error(`Tài liệu với ID ${documentId} không tồn tại.`)
+    }
+
+    const existingJobs = await this.jobRepo.findByDocumentId(documentId)
+    const activeJob = existingJobs.find(
+      (j) => j.jobType === "embedding" && (j.status === "pending" || j.status === "processing")
+    )
+    if (activeJob) {
+      return activeJob
+    }
+
+    const now = new Date().toISOString()
+    const jobId = `job-embed-${documentId}-${Date.now()}`
+    return this.jobRepo.create({
+      id: jobId,
+      documentId,
+      jobType: "embedding",
+      status: "pending",
+      retryCount: 0,
+      maxRetries: 3,
+      createdAt: now,
+      updatedAt: now,
+    })
+  }
+
+
+  /**
    * Process a specific processing job by ID.
    * Concurrency-safe: claims job atomically before processing.
    */
@@ -139,6 +184,8 @@ export class DocumentWorker {
         return await this.processOcrJob(claimedJob)
       } else if (jobType === "analysis") {
         return await this.processAnalysisJob(claimedJob)
+      } else if (jobType === "embedding") {
+        return await this.processEmbeddingJob(claimedJob)
       } else {
         return await this.processPdfJob(claimedJob)
       }
@@ -146,11 +193,18 @@ export class DocumentWorker {
       const errorMessage = err instanceof Error ? err.message : String(err)
       console.error(`DocumentWorker job ${jobId} (${jobType}) failed:`, errorMessage)
 
-      // Do not retry non-retryable AI errors (e.g. auth or missing config)
-      const isNonRetryable = err instanceof AIError && !err.retryable
+      // Do not retry non-retryable AI or Embedding errors
+      const isNonRetryable =
+        (err instanceof AIError && !err.retryable) ||
+        (err instanceof EmbeddingError && !err.retryable)
+
       if (isNonRetryable) {
         await this.jobRepo.updateStatus(jobId, "failed", errorMessage)
-        await this.documentRepo.updateStatus(documentId, jobType === "analysis" ? "analysis_failed" : "failed")
+        if (jobType === "analysis") {
+          await this.documentRepo.updateStatus(documentId, "analysis_failed")
+        } else if (jobType !== "embedding") {
+          await this.documentRepo.updateStatus(documentId, "failed")
+        }
         return {
           jobId,
           documentId,
@@ -163,8 +217,13 @@ export class DocumentWorker {
       // Bounded retry handling
       const retryResult = await this.jobRepo.failOrRetry(jobId, errorMessage)
       if (!retryResult.retrying) {
-        // Retries exhausted, mark document as failed
-        await this.documentRepo.updateStatus(documentId, jobType === "analysis" ? "analysis_failed" : "failed")
+        // Retries exhausted
+        if (jobType === "analysis") {
+          await this.documentRepo.updateStatus(documentId, "analysis_failed")
+        } else if (jobType !== "embedding") {
+          await this.documentRepo.updateStatus(documentId, "failed")
+        }
+        // Invariant: Embedding failure does not make document unusable
       } else if (jobType === "ocr") {
         // While retrying OCR, retain needs_ocr status on document
         await this.documentRepo.updateStatus(documentId, "needs_ocr")
@@ -172,6 +231,7 @@ export class DocumentWorker {
         // While retrying analysis, keep status as processed
         await this.documentRepo.updateStatus(documentId, "processed")
       }
+
 
       return {
         jobId,
@@ -244,6 +304,9 @@ export class DocumentWorker {
         await this.chunkingService.chunkAndSave(documentId)
       }
       await this.documentRepo.updateStatus(documentId, "processed")
+      if (this.embeddingService) {
+        await this.enqueueEmbeddingJob(documentId)
+      }
       if (this.autoAnalyze && this.analysisService) {
         await this.enqueueAnalysisJob(documentId)
       }
@@ -315,6 +378,9 @@ export class DocumentWorker {
       await this.chunkingService.chunkAndSave(documentId)
     }
     await this.documentRepo.updateStatus(documentId, "processed")
+    if (this.embeddingService) {
+      await this.enqueueEmbeddingJob(documentId)
+    }
     if (this.autoAnalyze && this.analysisService) {
       await this.enqueueAnalysisJob(documentId)
     }
@@ -361,6 +427,30 @@ export class DocumentWorker {
       documentId,
       jobType: "analysis",
       success: true,
+    }
+  }
+
+  /**
+   * Execute embedding job on chunked document
+   */
+  private async processEmbeddingJob(job: ProcessingJobRecord): Promise<WorkerJobResult> {
+    const jobId = job.id
+    const documentId = job.documentId
+
+    if (!this.embeddingService) {
+      throw new Error("EmbeddingService chưa được cấu hình cho DocumentWorker.")
+    }
+
+    const res = await this.embeddingService.embedDocument(documentId)
+
+    await this.jobRepo.updateStatus(jobId, "completed")
+
+    return {
+      jobId,
+      documentId,
+      jobType: "embedding",
+      success: true,
+      pageCount: res.embeddedCount,
     }
   }
 

@@ -76,6 +76,21 @@ export const documentChunks = sqliteTable("document_chunks", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const documentChunkEmbeddings = sqliteTable("document_chunk_embeddings", {
+  id: text("id").primaryKey(),
+  chunkId: text("chunk_id")
+    .notNull()
+    .references(() => documentChunks.id, { onDelete: "cascade" }),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  model: text("model").notNull(),
+  dimensions: integer("dimensions").notNull(),
+  embedding: text("embedding").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export type DocumentRecord = typeof documents.$inferSelect
 export type NewDocumentRecord = typeof documents.$inferInsert
 
@@ -90,5 +105,9 @@ export type NewDocumentAnalysisRecord = typeof documentAnalyses.$inferInsert
 
 export type DocumentChunkRecord = typeof documentChunks.$inferSelect
 export type NewDocumentChunkRecord = typeof documentChunks.$inferInsert
+
+export type DocumentChunkEmbeddingRecord = typeof documentChunkEmbeddings.$inferSelect
+export type NewDocumentChunkEmbeddingRecord = typeof documentChunkEmbeddings.$inferInsert
+
 
 

@@ -93,6 +93,65 @@ CREATE INDEX IF NOT EXISTS idx_document_chunks_doc_page ON document_chunks(docum
 CREATE UNIQUE INDEX IF NOT EXISTS idx_document_chunks_doc_chunk_idx ON document_chunks(document_id, chunk_index);
 `
 
+export const DOCUMENT_CHUNKS_FTS_MIGRATION_SQL = `
+CREATE VIRTUAL TABLE IF NOT EXISTS document_chunks_fts USING fts5(
+  chunk_id UNINDEXED,
+  document_id UNINDEXED,
+  page_number UNINDEXED,
+  content,
+  tokenize = 'unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_document_chunks_fts_ai AFTER INSERT ON document_chunks
+BEGIN
+  INSERT INTO document_chunks_fts (chunk_id, document_id, page_number, content)
+  VALUES (new.id, new.document_id, new.page_number, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_document_chunks_fts_ad AFTER DELETE ON document_chunks
+BEGIN
+  DELETE FROM document_chunks_fts WHERE chunk_id = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_document_chunks_fts_au AFTER UPDATE ON document_chunks
+BEGIN
+  DELETE FROM document_chunks_fts WHERE chunk_id = old.id;
+  INSERT INTO document_chunks_fts (chunk_id, document_id, page_number, content)
+  VALUES (new.id, new.document_id, new.page_number, new.content);
+END;
+
+INSERT INTO document_chunks_fts (chunk_id, document_id, page_number, content)
+SELECT id, document_id, page_number, content FROM document_chunks
+WHERE NOT EXISTS (SELECT 1 FROM document_chunks_fts WHERE chunk_id = document_chunks.id);
+`
+
+export const DOCUMENT_CHUNK_EMBEDDINGS_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS document_chunk_embeddings (
+  id TEXT PRIMARY KEY NOT NULL,
+  chunk_id TEXT NOT NULL REFERENCES document_chunks(id) ON DELETE CASCADE,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  embedding TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_chunk_embeddings_chunk_model
+  ON document_chunk_embeddings(chunk_id, model);
+
+CREATE INDEX IF NOT EXISTS idx_doc_chunk_embeddings_doc_id
+  ON document_chunk_embeddings(document_id);
+
+CREATE INDEX IF NOT EXISTS idx_doc_chunk_embeddings_model
+  ON document_chunk_embeddings(model);
+
+CREATE TRIGGER IF NOT EXISTS trg_document_chunk_embeddings_ad AFTER DELETE ON document_chunks
+BEGIN
+  DELETE FROM document_chunk_embeddings WHERE chunk_id = old.id;
+END;
+`
+
 interface MigrationItem {
   id: string
   sql: string
@@ -115,9 +174,128 @@ const MIGRATIONS: MigrationItem[] = [
     id: "0003_document_chunks",
     sql: DOCUMENT_CHUNKS_MIGRATION_SQL,
   },
+  {
+    id: "0004_document_chunks_fts",
+    sql: DOCUMENT_CHUNKS_FTS_MIGRATION_SQL,
+  },
+  {
+    id: "0005_document_chunk_embeddings",
+    sql: DOCUMENT_CHUNK_EMBEDDINGS_MIGRATION_SQL,
+  },
 ]
 
 
+export function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = []
+  let current = ""
+  let inSingleQuote = false
+  let inDoubleQuote = false
+  let inLineComment = false
+  let inBlockComment = false
+  let triggerDepth = 0
+
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i]
+    const nextChar = sql[i + 1]
+
+    if (inLineComment) {
+      current += char
+      if (char === "\n") inLineComment = false
+      continue
+    }
+    if (inBlockComment) {
+      current += char
+      if (char === "*" && nextChar === "/") {
+        current += nextChar
+        i++
+        inBlockComment = false
+      }
+      continue
+    }
+    if (inSingleQuote) {
+      current += char
+      if (char === "'") {
+        if (nextChar === "'") {
+          current += nextChar
+          i++
+        } else {
+          inSingleQuote = false
+        }
+      }
+      continue
+    }
+    if (inDoubleQuote) {
+      current += char
+      if (char === '"') {
+        if (nextChar === '"') {
+          current += nextChar
+          i++
+        } else {
+          inDoubleQuote = false
+        }
+      }
+      continue
+    }
+
+    if (char === "-" && nextChar === "-") {
+      inLineComment = true
+      current += char
+      continue
+    }
+    if (char === "/" && nextChar === "*") {
+      inBlockComment = true
+      current += char
+      continue
+    }
+    if (char === "'") {
+      inSingleQuote = true
+      current += char
+      continue
+    }
+    if (char === '"') {
+      inDoubleQuote = true
+      current += char
+      continue
+    }
+
+    const prevChar = i > 0 ? sql[i - 1] : " "
+    const isWordBoundaryBefore = /[^a-zA-Z0-9_]/.test(prevChar)
+
+    if (isWordBoundaryBefore) {
+      const remaining = sql.slice(i)
+      const beginMatch = remaining.match(/^BEGIN\b/i)
+      const endMatch = remaining.match(/^END\b/i)
+
+      if (beginMatch) {
+        triggerDepth++
+        current += beginMatch[0]
+        i += beginMatch[0].length - 1
+        continue
+      }
+      if (endMatch) {
+        if (triggerDepth > 0) triggerDepth--
+        current += endMatch[0]
+        i += endMatch[0].length - 1
+        continue
+      }
+    }
+
+    if (char === ";" && triggerDepth === 0) {
+      const trimmed = current.trim()
+      if (trimmed.length > 0) {
+        statements.push(trimmed)
+      }
+      current = ""
+      continue
+    }
+    current += char
+  }
+  const lastTrimmed = current.trim()
+  if (lastTrimmed.length > 0) {
+    statements.push(lastTrimmed)
+  }
+  return statements
+}
 
 export async function runMigrations(executor: MigrationExecutor): Promise<void> {
   // Ensure migrations tracking table exists
@@ -137,11 +315,7 @@ export async function runMigrations(executor: MigrationExecutor): Promise<void> 
 
   for (const migration of MIGRATIONS) {
     if (!applied.has(migration.id)) {
-      // Split migration SQL by semicolons to execute statements
-      const statements = migration.sql
-        .split(";")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
+      const statements = splitSqlStatements(migration.sql)
 
       for (const statement of statements) {
         await executor.execute(statement)
@@ -154,3 +328,4 @@ export async function runMigrations(executor: MigrationExecutor): Promise<void> 
     }
   }
 }
+

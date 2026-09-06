@@ -90,3 +90,16 @@ pub fn db_query(
 
     Ok(results)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fts5_support() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE VIRTUAL TABLE test_fts USING fts5(content);", []).unwrap();
+        conn.execute("INSERT INTO test_fts (content) VALUES (?);", ["hello world"]).unwrap();
+    }
+}
+

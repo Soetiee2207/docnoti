@@ -35,6 +35,15 @@ import {
 import {
   ChunkingService,
 } from "./chunking"
+import { FtsSearchRepository } from "@/repositories/ftsSearchRepository"
+import { FtsSearchService } from "./search"
+import { DocumentChunkEmbeddingRepository } from "@/repositories/documentChunkEmbeddingRepository"
+import {
+  type EmbeddingProvider,
+  DeterministicEmbeddingProvider,
+  EmbeddingService,
+} from "./embedding"
+import { HybridRetrievalService } from "./retrieval"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -50,6 +59,12 @@ export interface AppServices {
   pageRepo: DocumentPageRepository
   chunkRepo: DocumentChunkRepository
   analysisRepo: AnalysisRepository
+  ftsSearchRepo: FtsSearchRepository
+  ftsSearchService: FtsSearchService
+  embeddingRepo: DocumentChunkEmbeddingRepository
+  embeddingProvider: EmbeddingProvider
+  embeddingService: EmbeddingService
+  hybridRetrievalService: HybridRetrievalService
   secretsService: SecretsService
   storageService: StorageService
   pdfProcessor: PDFProcessor
@@ -66,6 +81,7 @@ export interface AppServices {
   aiProviderSelector: AIProviderSelector
   analysisService: AnalysisService
 }
+
 
 
 
@@ -91,7 +107,21 @@ export async function getAppServices(): Promise<AppServices> {
       const pageRepo = new DocumentPageRepository(db)
       const chunkRepo = new DocumentChunkRepository(db)
       const analysisRepo = new AnalysisRepository(db)
+      const ftsSearchRepo = new FtsSearchRepository(db)
+      const ftsSearchService = new FtsSearchService(ftsSearchRepo)
+      const embeddingRepo = new DocumentChunkEmbeddingRepository(db)
+      const embeddingProvider: EmbeddingProvider = new DeterministicEmbeddingProvider()
+      const embeddingService = new EmbeddingService(
+        embeddingProvider,
+        chunkRepo,
+        embeddingRepo
+      )
       const chunkingService = new ChunkingService(chunkRepo, pageRepo)
+      const hybridRetrievalService = new HybridRetrievalService(
+        ftsSearchService,
+        embeddingRepo,
+        embeddingProvider
+      )
       const storageService: StorageService = isTauriEnvironment()
         ? new TauriStorageService()
         : new InMemoryStorageService()
@@ -139,7 +169,8 @@ export async function getAppServices(): Promise<AppServices> {
         ocrService,
         analysisService,
         false,
-        chunkingService
+        chunkingService,
+        embeddingService
       )
 
       servicesInstance = {
@@ -149,6 +180,12 @@ export async function getAppServices(): Promise<AppServices> {
         pageRepo,
         chunkRepo,
         analysisRepo,
+        ftsSearchRepo,
+        ftsSearchService,
+        embeddingRepo,
+        embeddingProvider,
+        embeddingService,
+        hybridRetrievalService,
         secretsService,
         storageService,
         pdfProcessor,
@@ -183,6 +220,11 @@ export function resetAppServices(): void {
 export * from "./ai"
 export * from "./secrets"
 export * from "./chunking"
+export * from "./search"
+export * from "./embedding"
+export * from "./retrieval"
+
+
 
 
 
