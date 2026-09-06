@@ -5,6 +5,8 @@ import type {
   DocumentClassification,
   ModelMetadata,
   ProviderAvailability,
+  ExtractedField,
+  AnalysisEvidence,
 } from './types';
 
 export interface MockAIProviderOptions {
@@ -12,6 +14,8 @@ export interface MockAIProviderOptions {
   unavailableReason?: string;
   simulatedClassification?: DocumentClassification;
   simulatedSummary?: string;
+  simulatedFields?: ExtractedField[];
+  simulatedEvidences?: AnalysisEvidence[];
   injectInvalidEvidence?: boolean;
 }
 
@@ -64,44 +68,48 @@ export class MockAIProvider implements AIProvider {
     const classification: DocumentClassification = this.options.simulatedClassification ?? 'INVOICE';
     const summary = this.options.simulatedSummary ?? `Analyzed ${request.fileName} containing ${request.pages.length} pages.`;
 
-    return {
-      documentId: request.documentId,
-      documentType: classification,
-      summary,
-      fields: [
-        {
-          name: 'title',
-          value: request.fileName,
-          semanticStatus: 'INFERRED',
+    const fields: ExtractedField[] = this.options.simulatedFields ?? [
+      {
+        name: 'title',
+        value: request.fileName,
+        semanticStatus: 'INFERRED',
+        confidence: 0.95,
+        evidence: {
+          claim: `Document title derived from file name: ${request.fileName}`,
+          status: 'INFERRED',
           confidence: 0.95,
-          evidence: {
-            claim: `Document title derived from file name: ${request.fileName}`,
-            status: 'INFERRED',
-            confidence: 0.95,
-            citations: [
-              {
-                pageNumber,
-                sourceText: evidenceText,
-              },
-            ],
-            reasoning: 'Derived from document header and filename.',
-          },
-        },
-      ],
-      evidences: [
-        {
-          claim: 'Document content verified from page text',
-          status: 'VERIFIED',
-          confidence: 0.98,
           citations: [
             {
               pageNumber,
               sourceText: evidenceText,
             },
           ],
-          reasoning: 'Extracted directly from page content.',
+          reasoning: 'Derived from document header and filename.',
         },
-      ],
+      },
+    ];
+
+    const evidences: AnalysisEvidence[] = this.options.simulatedEvidences ?? [
+      {
+        claim: 'Document content verified from page text',
+        status: 'VERIFIED',
+        confidence: 0.98,
+        citations: [
+          {
+            pageNumber,
+            sourceText: evidenceText,
+          },
+        ],
+        reasoning: 'Extracted directly from page content.',
+      },
+    ];
+
+    return {
+      documentId: request.documentId,
+      documentType: classification,
+      summary,
+      fields,
+      evidences,
       warnings: [],
       provider: this.metadata.providerId,
       model: this.metadata.modelId,

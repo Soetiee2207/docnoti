@@ -152,6 +152,61 @@ BEGIN
 END;
 `
 
+export const TASKS_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY NOT NULL,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  analysis_id TEXT REFERENCES document_analyses(id) ON DELETE SET NULL,
+  analysis_version INTEGER,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  deadline_type TEXT NOT NULL DEFAULT 'none',
+  raw_deadline TEXT,
+  deadline_date TEXT,
+  semantic_status TEXT NOT NULL DEFAULT 'UNCERTAIN',
+  confidence REAL,
+  evidence TEXT,
+  user_edited INTEGER NOT NULL DEFAULT 0,
+  confirmed_at TEXT,
+  rejected_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_document_id ON tasks(document_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_analysis_id ON tasks(analysis_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_deadline_date ON tasks(deadline_date);
+`
+
+export const CALENDAR_EVENTS_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  external_event_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  is_all_day INTEGER NOT NULL DEFAULT 1,
+  timezone TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_calendar_events_task_id ON calendar_events(task_id);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_document_id ON calendar_events(document_id);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_provider ON calendar_events(provider);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_start_date ON calendar_events(start_date);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_status ON calendar_events(status);
+`
+
 interface MigrationItem {
   id: string
   sql: string
@@ -181,6 +236,14 @@ const MIGRATIONS: MigrationItem[] = [
   {
     id: "0005_document_chunk_embeddings",
     sql: DOCUMENT_CHUNK_EMBEDDINGS_MIGRATION_SQL,
+  },
+  {
+    id: "0006_tasks",
+    sql: TASKS_MIGRATION_SQL,
+  },
+  {
+    id: "0007_calendar_events",
+    sql: CALENDAR_EVENTS_MIGRATION_SQL,
   },
 ]
 

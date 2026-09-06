@@ -7,6 +7,7 @@ import type { OCRService } from "@/services/ocr/ocrService"
 import type { AnalysisService } from "@/services/ai/analysisService"
 import type { ChunkingService } from "@/services/chunking"
 import type { EmbeddingService } from "@/services/embedding"
+import type { TaskExtractionService } from "@/services/tasks"
 import { AIError } from "@/services/ai/types"
 import { EmbeddingError } from "@/services/embedding"
 import type { ProcessingJobRecord } from "@/db/schema"
@@ -31,6 +32,7 @@ export class DocumentWorker {
   private analysisService?: AnalysisService
   private chunkingService?: ChunkingService
   private embeddingService?: EmbeddingService
+  private taskExtractionService?: TaskExtractionService
   private autoAnalyze: boolean = false
   private isRunning = false
 
@@ -44,7 +46,8 @@ export class DocumentWorker {
     analysisService?: AnalysisService,
     autoAnalyze: boolean = false,
     chunkingService?: ChunkingService,
-    embeddingService?: EmbeddingService
+    embeddingService?: EmbeddingService,
+    taskExtractionService?: TaskExtractionService
   ) {
     this.documentRepo = documentRepo
     this.jobRepo = jobRepo
@@ -56,6 +59,14 @@ export class DocumentWorker {
     this.autoAnalyze = autoAnalyze
     this.chunkingService = chunkingService
     this.embeddingService = embeddingService
+    this.taskExtractionService = taskExtractionService
+  }
+
+  /**
+   * Set or update the TaskExtraction service on this worker
+   */
+  setTaskExtractionService(taskExtractionService: TaskExtractionService): void {
+    this.taskExtractionService = taskExtractionService
   }
 
   /**
@@ -414,7 +425,21 @@ export class DocumentWorker {
     await this.documentRepo.updateStatus(documentId, "analyzing")
 
     // Step 2: Execute analysis pipeline
-    await this.analysisService.analyzeDocument(documentId)
+    const analysisRes = await this.analysisService.analyzeDocument(documentId)
+
+    // Step 2.1: Extract candidate tasks idempotently if taskExtractionService is available
+    if (this.taskExtractionService && analysisRes?.result) {
+      try {
+        await this.taskExtractionService.extractAndSaveCandidates(
+          documentId,
+          analysisRes.record?.id,
+          analysisRes.record?.version,
+          analysisRes.result
+        )
+      } catch (extractErr) {
+        console.warn(`[Worker] Task candidate extraction warning for document ${documentId}:`, extractErr)
+      }
+    }
 
     // Step 3: Transition document to analyzed
     await this.documentRepo.updateStatus(documentId, "analyzed")

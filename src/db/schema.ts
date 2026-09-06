@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core"
 
 export const documents = sqliteTable("documents", {
   id: text("id").primaryKey(),
@@ -91,6 +91,32 @@ export const documentChunkEmbeddings = sqliteTable("document_chunk_embeddings", 
   updatedAt: text("updated_at").notNull(),
 })
 
+export const tasks = sqliteTable("tasks", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  analysisId: text("analysis_id").references(() => documentAnalyses.id, {
+    onDelete: "set null",
+  }),
+  analysisVersion: integer("analysis_version"),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"),
+  deadlineType: text("deadline_type").notNull().default("none"),
+  rawDeadline: text("raw_deadline"),
+  deadlineDate: text("deadline_date"),
+  semanticStatus: text("semantic_status").notNull().default("UNCERTAIN"),
+  confidence: real("confidence"),
+  evidence: text("evidence"),
+  userEdited: integer("user_edited").notNull().default(0),
+  confirmedAt: text("confirmed_at"),
+  rejectedAt: text("rejected_at"),
+  completedAt: text("completed_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export type DocumentRecord = typeof documents.$inferSelect
 export type NewDocumentRecord = typeof documents.$inferInsert
 
@@ -109,5 +135,30 @@ export type NewDocumentChunkRecord = typeof documentChunks.$inferInsert
 export type DocumentChunkEmbeddingRecord = typeof documentChunkEmbeddings.$inferSelect
 export type NewDocumentChunkEmbeddingRecord = typeof documentChunkEmbeddings.$inferInsert
 
+export type TaskRecord = typeof tasks.$inferSelect
+export type NewTaskRecord = typeof tasks.$inferInsert
 
+export const calendarEvents = sqliteTable("calendar_events", {
+  id: text("id").primaryKey(),
+  taskId: text("task_id")
+    .notNull()
+    .references(() => tasks.id, { onDelete: "cascade" }),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  externalEventId: text("external_event_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  isAllDay: integer("is_all_day").notNull().default(1),
+  timezone: text("timezone").notNull(),
+  status: text("status").notNull().default("scheduled"),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
 
+export type CalendarEventRecord = typeof calendarEvents.$inferSelect
+export type NewCalendarEventRecord = typeof calendarEvents.$inferInsert

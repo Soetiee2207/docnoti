@@ -1,17 +1,19 @@
 import { useState } from "react"
-import { ArrowLeft, FileText, Sparkles, FileCheck2 } from "lucide-react"
+import { ArrowLeft, FileText, Sparkles, FileCheck2, CheckSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DocumentViewer } from "./DocumentViewer"
 import { DocumentAnalysisQaView } from "./DocumentAnalysisQaView"
 import { DocumentFullSummaryView } from "./DocumentFullSummaryView"
+import { TaskCard } from "@/components/tasks/TaskCard"
 import { useDocumentAnalysis } from "@/hooks/useDocumentAnalysis"
+import { useTasks } from "@/hooks/useTasks"
 
 interface DocumentDetailViewProps {
   documentId: string
   onBack: () => void
 }
 
-type DetailTab = "qa" | "summary"
+type DetailTab = "qa" | "summary" | "tasks"
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B"
@@ -44,6 +46,14 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
     loadFullSummary,
   } = useDocumentAnalysis(documentId)
 
+  const {
+    tasks,
+    loading: loadingTasks,
+    pendingCount,
+    confirmTask,
+    rejectTask,
+  } = useTasks({ documentId })
+
   return (
     <div className="space-y-4">
       {/* Top Header & Navigation Bar */}
@@ -59,24 +69,21 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
             <span>Danh sách</span>
           </Button>
 
-          <div>
-            <div className="flex items-center gap-2">
+          {document && (
+            <div className="flex items-center gap-2 min-w-0">
               <FileText className="size-4 text-primary shrink-0" />
-              <h2 className="text-sm font-semibold tracking-tight text-foreground" title={document?.name}>
-                {document?.name ?? "Chi tiết tài liệu"}
-              </h2>
+              <span className="text-xs font-semibold text-foreground truncate max-w-[280px]">
+                {document.name}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                ({formatBytes(document.fileSize)})
+              </span>
             </div>
-            {document && (
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {formatBytes(document.fileSize)} • {pages.length} trang đã trích xuất • Trạng thái:{" "}
-                <span className="font-medium text-foreground">{document.status}</span>
-              </p>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Intelligence Tab Switcher */}
-        <div className="flex items-center rounded-lg border border-border bg-muted/30 p-0.5 text-xs">
+        {/* View Switcher Tabs */}
+        <div className="flex items-center gap-1 rounded-lg bg-muted p-1 text-xs">
           <button
             type="button"
             onClick={() => setActiveTab("qa")}
@@ -106,6 +113,23 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
             <FileCheck2 className="size-3.5 text-muted-foreground" />
             <span>Tóm tắt tổng quan</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("tasks")}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors ${
+              activeTab === "tasks"
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <CheckSquare className="size-3.5 text-amber-500" />
+            <span>Nhiệm vụ</span>
+            {pendingCount > 0 && (
+              <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                {pendingCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -123,7 +147,7 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
 
         {/* Right Column: Q&A / Analysis Intelligence Panel (7 cols) */}
         <div className="lg:col-span-7">
-          {activeTab === "qa" ? (
+          {activeTab === "qa" && (
             <DocumentAnalysisQaView
               question={question}
               onQuestionChange={setQuestion}
@@ -136,13 +160,61 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
               noCandidates={noCandidates}
               onNavigateToPage={setCurrentPage}
             />
-          ) : (
+          )}
+
+          {activeTab === "summary" && (
             <DocumentFullSummaryView
               summary={fullSummary}
               loading={loadingSummary}
               onGenerate={loadFullSummary}
               onNavigateToPage={setCurrentPage}
             />
+          )}
+
+          {activeTab === "tasks" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <CheckSquare className="size-3.5 text-muted-foreground" />
+                    Nhiệm vụ & Hạn chót từ tài liệu này ({tasks.length})
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    Xác nhận hoặc chỉnh sửa các hành động được AI gợi ý dựa trên bằng chứng
+                  </p>
+                </div>
+              </div>
+
+              {loadingTasks && (
+                <div className="py-8 text-center text-xs text-muted-foreground">
+                  Đang tải danh sách nhiệm vụ...
+                </div>
+              )}
+
+              {!loadingTasks && tasks.length === 0 && (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-10 text-center text-muted-foreground">
+                  <CheckSquare className="size-7 text-muted-foreground/50 mb-2" />
+                  <p className="text-xs font-medium text-foreground">Chưa có nhiệm vụ nào cho tài liệu này</p>
+                  <p className="mt-1 text-[11px] max-w-xs">
+                    Hãy thực hiện phân tích tóm tắt toàn văn hoặc hỏi đáp để hệ thống trích xuất nhiệm vụ.
+                  </p>
+                </div>
+              )}
+
+              {!loadingTasks && tasks.length > 0 && (
+                <div className="space-y-3">
+                  {tasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      onConfirm={confirmTask}
+                      onReject={rejectTask}
+                      onNavigateToPage={setCurrentPage}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

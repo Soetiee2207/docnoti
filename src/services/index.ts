@@ -45,6 +45,8 @@ import {
   EmbeddingService,
 } from "./embedding"
 import { HybridRetrievalService } from "./retrieval"
+import { TaskRepository } from "@/repositories/taskRepository"
+import { TaskExtractionService } from "./tasks"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -82,6 +84,8 @@ export interface AppServices {
   aiProviderSelector: AIProviderSelector
   analysisService: AnalysisService
   contextBuilder: ContextBuilder
+  taskRepo: TaskRepository
+  taskExtractionService: TaskExtractionService
 }
 
 
@@ -166,6 +170,9 @@ export async function getAppServices(): Promise<AppServices> {
         storageService
       )
 
+      const taskRepo = new TaskRepository(db)
+      const taskExtractionService = new TaskExtractionService(taskRepo)
+
       const documentWorker = new DocumentWorker(
         documentRepo,
         jobRepo,
@@ -176,7 +183,8 @@ export async function getAppServices(): Promise<AppServices> {
         analysisService,
         false,
         chunkingService,
-        embeddingService
+        embeddingService,
+        taskExtractionService
       )
 
       servicesInstance = {
@@ -208,6 +216,8 @@ export async function getAppServices(): Promise<AppServices> {
         aiProviderSelector,
         analysisService,
         contextBuilder,
+        taskRepo,
+        taskExtractionService,
       }
 
       return servicesInstance
@@ -230,6 +240,7 @@ export * from "./chunking"
 export * from "./search"
 export * from "./embedding"
 export * from "./retrieval"
+export * from "./tasks"
 
 
 
