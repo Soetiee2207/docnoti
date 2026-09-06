@@ -93,7 +93,7 @@ export function DocumentFullSummaryView({
                       onClick={() => onNavigateToPage(field.evidence.citations[0]!.pageNumber)}
                       className="ml-2 inline-flex items-center text-[10px] text-primary hover:underline cursor-pointer"
                     >
-                      Trang {field.evidence.citations[0]!.pageNumber}
+                      {`Trang ${field.evidence.citations[0]!.pageNumber}`}
                     </button>
                   )}
                 </div>
@@ -133,7 +133,7 @@ export function DocumentFullSummaryView({
                           onClick={() => onNavigateToPage(c.pageNumber)}
                           className="font-semibold text-primary hover:underline cursor-pointer"
                         >
-                          Trang {c.pageNumber}
+                          {`Trang ${c.pageNumber}`}
                         </button>
                         {c.sourceText && (
                           <blockquote className="border-l-2 border-primary/40 pl-2 italic text-foreground/90 select-text">

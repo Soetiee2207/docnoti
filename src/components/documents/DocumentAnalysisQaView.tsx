@@ -48,12 +48,19 @@ export function DocumentAnalysisQaView({
     await onAsk(question.trim())
   }
 
-  // Create lookup for matching chunk retrieval sources
-  const chunkSourceMap = new Map<string, "lexical" | "vector" | "both">()
-  if (context?.chunks) {
+  // Helper to match citation quote with retrieved chunks to determine provenance source
+  const getProvenanceSource = (quote?: string): "lexical" | "vector" | "both" | undefined => {
+    if (!quote || !context?.chunks || context.chunks.length === 0) return undefined
+    const normQuote = quote.trim().toLowerCase()
+    if (!normQuote) return undefined
+
     for (const chunk of context.chunks) {
-      chunkSourceMap.set(chunk.content.trim().toLowerCase(), chunk.retrievalSources)
+      const normChunk = chunk.content.trim().toLowerCase()
+      if (normChunk === normQuote || normChunk.includes(normQuote) || normQuote.includes(normChunk)) {
+        return chunk.retrievalSources
+      }
     }
+    return undefined
   }
 
   return (
@@ -179,7 +186,7 @@ export function DocumentAnalysisQaView({
                           onClick={() => onNavigateToPage(field.evidence.citations[0]!.pageNumber)}
                           className="ml-2 inline-flex items-center gap-0.5 text-[10px] text-primary hover:underline"
                         >
-                          Trang {field.evidence.citations[0]!.pageNumber}
+                          {`Trang ${field.evidence.citations[0]!.pageNumber}`}
                           <ArrowUpRight className="size-2.5" />
                         </button>
                       )}
@@ -233,8 +240,7 @@ export function DocumentAnalysisQaView({
                     {evidence.citations && evidence.citations.length > 0 && (
                       <div className="space-y-1.5 pt-1 border-t border-border/40">
                         {evidence.citations.map((citation, cIdx) => {
-                          const normalizedQuote = citation.sourceText?.trim().toLowerCase() ?? ""
-                          const matchedSource = chunkSourceMap.get(normalizedQuote)
+                          const matchedSource = getProvenanceSource(citation.sourceText)
 
                           return (
                             <div
@@ -248,7 +254,7 @@ export function DocumentAnalysisQaView({
                                   className="inline-flex items-center gap-1 font-semibold text-primary hover:underline cursor-pointer"
                                   title={`Xem trang ${citation.pageNumber} trên trình xem văn bản`}
                                 >
-                                  <span>Trang {citation.pageNumber}</span>
+                                  <span>{`Trang ${citation.pageNumber}`}</span>
                                   <ArrowUpRight className="size-3" />
                                 </button>
                                 <SourceBadge source={matchedSource} />

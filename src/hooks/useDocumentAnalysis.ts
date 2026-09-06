@@ -80,7 +80,9 @@ export function useDocumentAnalysis(documentId: string): UseDocumentAnalysisResu
   }, [documentId])
 
   useEffect(() => {
-    void reloadDocument()
+    queueMicrotask(() => {
+      void reloadDocument()
+    })
   }, [reloadDocument])
 
   const askQuestion = useCallback(

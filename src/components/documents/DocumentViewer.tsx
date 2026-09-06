@@ -63,7 +63,7 @@ export function DocumentViewer({
           </Button>
 
           <span className="px-1 text-xs font-semibold tabular-nums text-foreground">
-            Trang {currentPage} / {totalPages}
+            {`Trang ${currentPage} / ${totalPages}`}
           </span>
 
           <Button
