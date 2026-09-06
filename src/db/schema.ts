@@ -62,6 +62,20 @@ export const documentAnalyses = sqliteTable("document_analyses", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const documentChunks = sqliteTable("document_chunks", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  pageNumber: integer("page_number").notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  content: text("content").notNull(),
+  charStart: integer("char_start"),
+  charEnd: integer("char_end"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export type DocumentRecord = typeof documents.$inferSelect
 export type NewDocumentRecord = typeof documents.$inferInsert
 
@@ -73,4 +87,8 @@ export type NewDocumentPageRecord = typeof documentPages.$inferInsert
 
 export type DocumentAnalysisRecord = typeof documentAnalyses.$inferSelect
 export type NewDocumentAnalysisRecord = typeof documentAnalyses.$inferInsert
+
+export type DocumentChunkRecord = typeof documentChunks.$inferSelect
+export type NewDocumentChunkRecord = typeof documentChunks.$inferInsert
+
 

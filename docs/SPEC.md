@@ -1,4 +1,4 @@
-# docnoti Product Specification
+# docnoti — Product Specification
 
 ## 1. Product Definition
 
@@ -8,223 +8,134 @@ Its purpose is to help users process large numbers of incoming documents,
 understand their contents, identify important information, extract tasks and
 deadlines, and convert confirmed actions into calendar events and reminders.
 
-The core product flow is:
+Core flow:
 
+```text
 Document
 → Ingestion
 → Parsing / OCR
 → Classification
+→ Chunking
+→ Embedding
+→ Retrieval
 → AI Analysis
-→ Evidence-backed Information
+→ Evidence
 → Tasks / Deadlines
 → User Confirmation
 → Calendar / Reminder
 → Notification
+```
 
-docnoti is not merely a document summarization application.
+Core principles:
 
-Its primary value is transforming documents into trustworthy information
-and actionable work.
+- local-first
+- privacy-first
+- evidence-first
+- source-of-truth preservation
+- explicit uncertainty handling
+- human confirmation for consequential actions
+- controlled cloud AI usage
+- local-only embedding
+- retrieval before unnecessary full-document LLM context
+- reliable background processing
 
 ---
 
-# 2. Product Goals
-
-## 2.1 Primary Goals
+## 2. Product Goals
 
 docnoti must:
 
 1. Make importing large numbers of documents easy.
 2. Automatically process documents after ingestion.
-3. Extract readable text from documents.
-4. Use OCR for documents where normal text extraction is insufficient.
-5. Understand and classify documents.
-6. Generate useful summaries.
-7. Extract important factual information.
-8. Preserve evidence for important extracted information.
-9. Extract tasks and deadlines.
-10. Distinguish facts from AI inference.
-11. Allow users to review and confirm extracted actions.
-12. Convert confirmed actions into calendar events or reminders.
-13. Provide both an internal calendar and Windows calendar integration.
-14. Provide local notifications.
-15. Allow users to control whether cloud AI APIs are used.
-16. Give users visibility and control over cloud AI costs.
-17. Automatically monitor configured folders for new documents.
-18. Support batch document ingestion.
-19. Keep user documents local by default.
+3. Extract readable text and use OCR when required.
+4. Classify documents and support document-specific analysis.
+5. Split documents into provenance-preserving chunks.
+6. Generate local semantic embeddings for all valid document chunks.
+7. Store embeddings locally for semantic retrieval.
+8. Retrieve relevant context before AI analysis when appropriate.
+9. Generate summaries and structured information.
+10. Preserve evidence for important extracted information.
+11. Extract tasks and deadlines.
+12. Distinguish facts from inference.
+13. Allow users to review and confirm extracted actions.
+14. Convert confirmed actions into calendar events or reminders.
+15. Provide an internal calendar and Windows calendar integration.
+16. Provide local notifications.
+17. Allow users to control cloud AI and associated costs.
+18. Monitor configured folders and support batch ingestion.
+19. Keep documents and embeddings local by default.
 
 ---
 
-# 3. Target User
+## 3. Core User Journey
 
-The primary target user is an individual who receives and processes many
-documents during normal work.
+### Import
 
-A representative user may receive documents through:
-
-- Zalo
-- email
-- downloaded files
-- USB drives
-- shared folders
-- other applications
-
-The user should be able to move documents into docnoti with minimal manual work.
-
-Zalo integration is not required for V1.
-
-The expected workflow is:
-
-Zalo
-→ user downloads document
-→ docnoti automatically detects the file
-→ document is processed
-
-or:
-
-User
-→ drags documents into docnoti
-→ documents are processed
-
----
-
-# 4. Core User Journey
-
-## 4.1 Import
-
-The user can:
+Users can:
 
 - select files manually
 - drag and drop files
-- import multiple files at once
+- import multiple files
 - configure watched folders
 
-Supported document formats are defined separately from the core product
-requirements.
+PDF is required for V1. DOCX is optional and may be added later.
 
-PDF is a required V1 document format.
+### Automatic Processing
 
-DOCX support is optional for the initial V1 implementation and may be added
-after the core PDF pipeline is stable.
-
----
-
-## 4.2 Automatic Processing
-
-After a document is imported, docnoti should automatically begin processing.
-
-The conceptual pipeline is:
-
+```text
 Import
 → Validate
-→ Extract text
-→ Determine whether OCR is required
-→ OCR when required
-→ Normalize content
-→ Classify document
-→ Analyze document
-→ Extract information
-→ Extract tasks / deadlines
-→ Generate summary
-→ Store results
-→ Mark processing complete
+→ Extract Text
+→ OCR if required
+→ Normalize
+→ Classify
+→ Chunk
+→ Embed
+→ Index
+→ Retrieve when required
+→ Analyze
+→ Extract Information
+→ Extract Tasks / Deadlines
+→ Generate Summary
+→ Store Results
+```
 
-The user should not need to manually start each processing step.
-
----
-
-# 5. Document Lifecycle
-
-Every document must have a clearly defined processing state.
-
-At minimum:
-
-- IMPORTED
-- PROCESSING
-- PROCESSED
-- NEEDS_REVIEW
-- FAILED
-
-The UI must clearly communicate the current state.
-
-A failed document must contain enough information for the user to understand
-that processing failed and, where possible, why.
+Processing runs through a persistent background worker.
 
 ---
 
-# 6. Document Management
+## 4. Document Processing
 
-Each imported document must retain metadata including, where applicable:
+### Text Extraction
 
-- original filename
-- file type
-- file size
-- import timestamp
-- source path
-- processing status
-- document type
-- processing errors
-- analysis version
+Normal text extraction must be attempted before OCR.
 
-The original document must remain available to the user.
+```text
+Text PDF
+→ Text Extraction
 
-Users should be able to:
-
-- view documents
-- search documents
-- inspect document details
-- delete documents
-- review extracted information
-- review tasks and deadlines associated with documents
-
----
-
-# 7. Document Processing
-
-## 7.1 Text Extraction
-
-docnoti must attempt normal text extraction before OCR.
-
-For text-based documents:
-
-Normal text extraction
-→ extracted text
-
-For scanned/image-based documents:
-
-Normal extraction
-→ insufficient text detected
+Scanned PDF
+→ Text Extraction
+→ Insufficient Text
 → OCR
-→ extracted text
+```
 
----
+### OCR
 
-## 7.2 OCR
+OCR is mandatory for V1.
 
-OCR is a mandatory V1 capability.
+Requirements:
 
-OCR must be treated as part of the document-processing pipeline rather than
-an optional future feature.
+- local processing
+- Vietnamese support
+- page-level provenance
+- usable output for scanned/image PDFs
 
-The system should support documents where:
+PaddleOCR is the V1 baseline.
 
-- pages contain scanned images
-- text is embedded as images
-- normal text extraction produces insufficient content
+### Classification
 
-OCR results must remain associated with their source document.
-
-Where possible, extracted text should preserve page boundaries so that later
-evidence can reference the original page.
-
----
-
-# 8. Document Classification
-
-docnoti should classify documents into meaningful document types.
-
-Initial types may include:
+Initial document types may include:
 
 - UNKNOWN
 - OFFICIAL_DOCUMENT
@@ -235,210 +146,380 @@ Initial types may include:
 - ASSIGNMENT
 - OTHER
 
-Classification must not prevent the user from manually correcting the type.
-
-Document-specific analysis may use the document type to determine which
-information should be prioritized.
-
-Examples:
-
-### Announcement
-
-Prioritize:
-
-- subject
-- affected people
-- effective date
-- important dates
-- required actions
-- deadlines
-
-### Plan
-
-Prioritize:
-
-- objectives
-- milestones
-- activities
-- responsible parties
-- deadlines
-
-### Report
-
-Prioritize:
-
-- executive summary
-- key findings
-- important numbers
-- problems
-- recommendations
-
-The exact extraction schema may evolve as more document types are supported.
+Users can manually correct classification.
 
 ---
 
-# 9. AI Analysis
+## 5. Chunking
 
-AI analysis may be performed using:
+After text extraction/OCR, documents are divided into semantic chunks.
+
+Source of truth:
+
+```text
+Document
+→ Document Pages
+→ Document Chunks
+```
+
+Chunking baseline:
+
+- page + paragraph/section
+- preserve semantic units
+- preserve document/page provenance
+- deterministic
+- idempotent
+
+Each chunk should retain:
+
+```text
+documentId
+pageNumber
+chunkIndex
+content
+charStart
+charEnd
+createdAt
+```
+
+If exact character offsets cannot be determined, page provenance must be
+preserved rather than invented.
+
+---
+
+## 6. Embedding
+
+### Model
+
+V1 baseline:
+
+```text
+jina-embeddings-v5-text-small
+```
+
+Embedding must be accessed through:
+
+```text
+EmbeddingProvider
+```
+
+Domain logic must not depend directly on a specific model.
+
+### Local-only
+
+Embedding is local-only.
+
+```text
+Document
+→ Pages
+→ Chunks
+→ Local Embedding Provider
+→ Local Vector Index
+```
+
+No external embedding API and no silent cloud fallback.
+
+### Coverage
+
+All valid document chunks must be eligible for embedding.
+
+Embedding is derived data, not source of truth.
+
+---
+
+## 7. Vector Storage
+
+V1 uses:
+
+```text
+SQLite + vector extension
+```
+
+No separate vector database server is required.
+
+Logical relationship:
+
+```text
+documents
+    ↓
+document_pages
+    ↓
+document_chunks
+    ↓
+document_embeddings
+```
+
+`document_embeddings` should be separate from `document_chunks` to support
+future model changes, dimensions, re-embedding, and versioning.
+
+If embedding fails, the document, extracted text, and FTS5 search must remain
+usable.
+
+---
+
+## 8. Embedding Background Processing
+
+Embedding runs through the persistent worker:
+
+```text
+Document Processed
+→ Embedding Job
+→ Create / Update Chunks
+→ Generate Embeddings
+→ Store Vectors
+→ Embedding Ready
+```
+
+Jobs support:
+
+- PENDING
+- PROCESSING
+- COMPLETED
+- FAILED
+- bounded retry
+- idempotency
+- restart recovery
+
+Retries must not create duplicate vectors.
+
+---
+
+## 9. Search and Retrieval
+
+V1 supports:
+
+```text
+SQLite FTS5
++
+Vector Search
+```
+
+Conceptual flow:
+
+```text
+                    Query
+                      ↓
+             +--------+--------+
+             ↓                 ↓
+           FTS5          Query Embedding
+             ↓                 ↓
+       Keyword Search    Vector Search
+             ↓                 ↓
+             +--------+--------+
+                      ↓
+              Candidate Merge
+                      ↓
+                   Rerank
+                      ↓
+                   Top-K
+                      ↓
+              Context Builder
+```
+
+Initial baseline:
+
+```text
+FTS5 candidates      ≈ 20
+Vector candidates    ≈ 20
+Merged candidates    ≤ 40
+Reranked candidates  ≈ 8
+```
+
+These are configurable starting points, not fixed product requirements.
+
+Retrieval quality optimization is deferred.
+
+### Scope
+
+Basic filters may include:
+
+```text
+documentId?
+documentType?
+dateRange?
+```
+
+Complex filtering is not required for V1.
+
+---
+
+## 10. Reranking
+
+The architecture includes:
+
+```text
+Reranker
+```
+
+Flow:
+
+```text
+Retrieval
+→ Candidate Chunks
+→ Reranker
+→ Final Context
+```
+
+The specific reranker implementation is not fixed by this specification.
+
+Optimization is deferred.
+
+---
+
+## 11. Context Builder
+
+The LLM should not receive the entire document by default.
+
+```text
+Retrieved Chunks
+→ Deduplicate
+→ Group by Document
+→ Preserve Page Order
+→ Apply Context Budget
+→ LLM
+```
+
+Context must preserve:
+
+- document identity
+- page identity
+- source text
+- provenance
+- ordering where appropriate
+
+Context limits must be enforced.
+
+---
+
+## 12. Context Strategy
+
+### Short Document
+
+If the document fits safely within the context budget:
+
+```text
+Document
+→ Direct Context
+→ LLM
+```
+
+### Targeted Analysis
+
+For fact extraction, Q&A, task extraction, deadline extraction, and
+document-specific analysis:
+
+```text
+Analysis Task
+→ Retrieval
+→ Reranking
+→ Context Builder
+→ LLM
+```
+
+### Long Document
+
+Long documents must not be blindly sent as one LLM request.
+
+```text
+Long Document
+→ Chunks
+→ Chunk Groups
+→ Intermediate Analysis / Summaries
+→ Higher-level Aggregation
+→ Final Analysis / Summary
+```
+
+This controls context size, cost, latency, and preserves document coverage.
+
+---
+
+## 13. AI Analysis
+
+AI may use:
 
 - cloud AI APIs
 - local AI models
 
-The product must not require a single AI provider.
+The product must not require a single provider.
 
-The architecture must allow different AI providers/models to be configured.
+AI may perform:
 
----
+- classification
+- summarization
+- structured information extraction
+- task extraction
+- deadline extraction
+- document-specific analysis
 
-## 9.1 Cloud AI
-
-Cloud AI APIs are allowed.
-
-However, cloud processing must be explicitly controlled by the user.
-
-docnoti must not silently send document content to a cloud provider.
-
-The user must be able to:
-
-- enable/disable cloud AI
-- select/configure a provider
-- configure API credentials
-- understand when cloud processing is being used
-- monitor estimated/recorded AI usage costs where provider information
-  permits
-- impose spending or usage limits where technically possible
-
-The system must fail safely when cloud AI is disabled or unavailable.
-
----
-
-## 9.2 Cost Control
-
-Cloud AI usage is a user-controlled resource.
-
-The product should provide mechanisms for:
-
-- estimated token usage where available
-- estimated cost where available
-- actual provider-reported usage where available
-- per-document usage information
-- cumulative usage information
-- configurable usage limits
-- confirmation before expensive operations when appropriate
-
-docnoti must not repeatedly re-analyze documents without user intent.
-
----
-
-# 10. Analysis Re-run Policy
-
-A document may be analyzed more than once.
-
-However, automatic repeated analysis should be avoided.
-
-The default behavior is:
-
-Document
-→ Analyze once
-→ Store result
-
-A new analysis should normally occur only when:
-
-- the user explicitly requests re-analysis
-- the analysis configuration/model changes in a way that requires it
-- the previous analysis failed
-- the user explicitly requests a different analysis
-
-The system should preserve previous analysis results rather than silently
-overwriting them.
-
----
-
-# 11. Analysis Versioning
-
-Analysis results must be versioned.
-
-A document may therefore have:
+The AI boundary is:
 
 ```text
-Document
- ├── Analysis v1
- ├── Analysis v2
- └── Analysis v3
+Retrieval / Context Strategy
+→ LLM
+→ Candidate Claims
+→ Evidence Validation
+→ Final Analysis
 ```
 
-Each analysis version should preserve:
+---
 
-- analysis identifier
-- document identifier
-- creation timestamp
-- provider
-- model
-- relevant configuration
-- result
-- processing status
-- usage information
+## 14. Cloud AI
 
-One version may be designated as the current/active analysis.
+Cloud AI is opt-in and user-controlled.
 
-Creating a new analysis version must not silently destroy previous versions.
+Users must be able to:
+
+- enable/disable cloud AI
+- configure provider
+- configure credentials
+- select model
+- understand when cloud processing is used
+- monitor usage/cost where available
+- configure limits where technically possible
+
+When retrieval is appropriate, prefer:
+
+```text
+Local Document
+→ Local Retrieval
+→ Relevant Context
+→ Cloud AI
+```
+
+rather than:
+
+```text
+Full Document
+→ Cloud AI
+```
+
+Exceptions include short documents and strategies requiring broader coverage.
+
+No hidden cloud-upload path is allowed.
 
 ---
 
-# 12. Evidence
+## 15. Evidence and Semantics
 
-Important extracted information must preserve a connection to the source
-document.
-
-Evidence should identify, where available:
+Important extracted information must preserve:
 
 - source document
-- page number
+- page
 - source text
-- source location
+- source location where available
+- relevant chunk
 
-The user should be able to move from an extracted claim to its evidence and
-then to the original document.
-
-Evidence must be associated with the analysis version that produced it.
-
----
-
-# 13. Information Semantics
-
-Extracted information must have an explicit semantic status.
-
-At minimum:
+Semantic status:
 
 - VERIFIED
 - INFERRED
 - UNCERTAIN
 
-### VERIFIED
+`VERIFIED` requires direct source support and successful evidence validation.
 
-The information is directly supported by the source material.
+Retrieval does not itself establish truth.
 
-### INFERRED
-
-The information was derived through reasoning and is not stated directly.
-
-### UNCERTAIN
-
-The system cannot reliably determine the information.
-
-The UI must make these distinctions visible.
-
-The system must never silently convert an inference or uncertain result into
-a verified fact.
-
----
-
-# 14. No Hallucinated Facts
-
-AI output must not become a verified document fact merely because an AI model
-generated it.
-
-The system must not invent:
+The system must never invent or silently verify unsupported:
 
 - dates
 - times
@@ -449,463 +530,184 @@ The system must not invent:
 - tasks
 - document facts
 
-when those details are not supported by source evidence.
-
-When the system cannot determine something reliably, it should mark the
-information as uncertain or request user confirmation.
-
 ---
 
-# 15. Summary
+## 16. Analysis Versioning
 
-Every successfully analyzed document should provide a concise summary.
-
-The summary should:
-
-- reflect the source document
-- prioritize information relevant to its document type
-- avoid unsupported claims
-- link important claims to evidence where appropriate
-- distinguish uncertainty where relevant
-
-The exact presentation may vary by document type.
-
----
-
-# 16. Important Information Extraction
-
-The system should extract information that is useful for understanding or
-acting on the document.
-
-Examples include:
-
-- people
-- organizations
-- dates
-- times
-- locations
-- subjects
-- amounts
-- requirements
-- decisions
-- important findings
-- recommendations
-- actions
-
-Extracted information should preserve evidence and semantic status where
-applicable.
-
-The exact schema may evolve as document types mature.
-
----
-
-# 17. Task Domain
-
-Task is a first-class entity.
-
-A task is not merely a field embedded inside a document or summary.
-
-Tasks may be:
-
-- explicitly stated in a document
-- inferred by the AI from document context
-
-Every task should preserve its source context.
-
-Conceptually:
+A document may have multiple analysis versions:
 
 ```text
 Document
-   |
-   v
-Task Suggestion
-   |
-   v
-User Review
-   |
-   v
-Confirmed Task
+ ├── Analysis v1
+ ├── Analysis v2
+ └── Analysis v3
 ```
+
+Each version should preserve:
+
+- identifier
+- document identifier
+- timestamp
+- provider
+- model
+- relevant configuration
+- result
+- usage
+- evidence
+- warnings
+
+Re-analysis must not silently overwrite previous versions.
 
 ---
 
-# 18. Task Extraction
+## 17. Tasks and Deadlines
 
-The system should detect actionable work from documents.
+Task is a first-class entity.
 
-Examples:
+Tasks may be explicit or inferred.
 
-- submit a report
-- prepare a document
-- attend a meeting
-- complete an assignment
-- send information
-- review a request
-- perform a required action
+Conceptual flow:
 
-Each extracted task should contain, where available:
+```text
+Document
+→ Task Suggestion
+→ User Review
+→ Confirmed Task
+```
+
+Tasks should preserve:
 
 - title
 - description
 - status
 - deadline
-- responsible person
+- responsible person where available
 - source document
-- source analysis version
+- source page
+- analysis version
 - evidence
 - confidence
 - confirmation state
 
-The system must distinguish explicitly stated tasks from inferred tasks.
+### Deadline Precision
 
----
-
-# 19. Explicit and Inferred Tasks
-
-An explicitly stated task is directly supported by the document.
-
-An inferred task is derived from document context.
-
-Example:
-
-```text
-Document:
-"Giáo viên nộp báo cáo trước ngày 15/09/2026."
-
-Task:
-Nộp báo cáo
-status = VERIFIED
-```
-
-Example:
-
-```text
-Document:
-"Cuộc họp ngày 20/09 sẽ thảo luận báo cáo kết quả."
-
-Possible inferred task:
-Chuẩn bị báo cáo kết quả
-status = INFERRED
-```
-
-Inferred tasks should normally require user confirmation before becoming
-actionable.
-
----
-
-# 20. Task Lifecycle
-
-The task lifecycle should support states similar to:
-
-```text
-DETECTED
-    |
-    v
-PENDING_CONFIRMATION
-    |
-    v
-CONFIRMED
-    |
-    v
-ACTIVE
-    |
-    +---- COMPLETED
-    |
-    +---- CANCELLED
-```
-
-The exact state model may be refined during implementation.
-
-Once a task is confirmed, its lifecycle should be independent from the
-source document.
-
----
-
-# 21. Deadline
-
-A deadline belongs to a Task but must preserve the precision of the source.
-
-A deadline may contain:
-
-- date
-- optional time
-- precision
-- status
-- confidence
-- evidence
-
-If the document contains only a date:
+If source contains only:
 
 ```text
 15/09/2026
 ```
 
-the system must represent:
+represent:
 
 ```text
 date = 2026-09-15
 time = null
 ```
 
-It must not invent a time.
+Do not invent a time.
 
-If the document explicitly states:
-
-```text
-trước 17:00 ngày 15/09/2026
-```
-
-the system may represent:
-
-```text
-date = 2026-09-15
-time = 17:00
-```
-
-The source precision must be preserved.
+If source explicitly contains a time, that time may be stored.
 
 ---
 
-# 22. Scheduling
-
-Scheduling is separate from AI analysis.
-
-The flow is:
-
-```text
-AI Analysis
-    |
-    v
-Task / Deadline
-    |
-    v
-User Confirmation
-    |
-    v
-Scheduling
-    |
-    +------------------+
-    |                  |
-    v                  v
-Internal Calendar   Windows Calendar
-```
+## 18. Scheduling and Calendar
 
 AI analysis must not directly create calendar events.
 
-Concrete scheduling actions require an appropriate user-confirmation
-boundary.
-
----
-
-# 23. Calendar
-
-docnoti must support:
-
-1. an internal calendar
-2. Windows calendar integration
-
-The internal calendar must work without an external calendar service.
-
-The Windows integration must be isolated behind an adapter so the core task
-domain does not depend directly on Windows-specific APIs.
-
-Future calendar providers may be added without changing the core Task model.
-
----
-
-# 24. Internal Calendar
-
-The internal calendar is owned by docnoti.
-
-Events may reference:
-
-- task
-- deadline
-- document
-- reminder
-
-Users should be able to view scheduled items and their relationship to
-tasks and source documents.
-
----
-
-# 25. Windows Calendar Integration
-
-Windows Calendar is an external integration.
-
-The exact integration mechanism is a technology decision.
-
-The integration must support, where technically possible:
-
-- creating events
-- updating events
-- deleting events
-- storing external identifiers
-- avoiding duplicate external events
-- reporting integration errors
-
-External calendar side effects require appropriate user authorization and
-confirmation.
-
----
-
-# 26. Notifications
-
-docnoti must provide local notifications.
-
-Notifications should support both:
-
-- runtime notifications while the application is running
-- startup notifications when the application starts
-
-Potential notification events include:
-
-- new documents
-- documents requiring review
-- processing failures
-- upcoming deadlines
-- due tasks
-- overdue tasks
-
-The system should avoid repeatedly notifying the user about the same event
-unless explicitly configured to do so.
-
----
-
-# 27. Startup Notifications
-
-When configured to start with Windows, docnoti should inspect persisted local
-state and surface relevant attention items.
-
-Examples:
-
-- new documents
-- upcoming deadlines
-- overdue tasks
-- failed processing jobs
-- documents requiring review
-
-Startup notification behavior must not require cloud services.
-
----
-
-# 28. Runtime Notifications
-
-While docnoti is running, the application may notify the user about relevant
-events.
-
-The notification system must track notification state sufficiently to avoid
-unwanted duplicate notifications.
-
----
-
-# 29. Watched Folders
-
-Watched folders are a required capability.
-
-Users can configure directories that docnoti monitors for supported documents.
-
-The watcher should:
-
-1. detect new files
-2. determine whether the file is supported
-3. wait until the file is stable
-4. perform duplicate detection
-5. submit the file to ingestion
-6. let the normal processing pipeline handle it
-
-The watcher must not implement OCR, AI analysis, task extraction, or calendar
-logic itself.
-
----
-
-# 30. File Stability
-
-A newly detected file may still be being copied or downloaded.
-
-docnoti must not process a file merely because a filesystem event occurred.
-
-Conceptually:
-
 ```text
-File Detected
-     |
-     v
-Check Stability
-     |
-     +---- changing ----> wait/recheck
-     |
-     +---- stable ------> import
+AI Analysis
+→ Task / Deadline
+→ User Confirmation
+→ Scheduling
+→ Calendar
 ```
 
-The exact stability strategy is an implementation decision.
+V1 supports:
+
+- Internal Calendar
+- Windows Calendar integration
+
+Calendar integrations must use adapters.
+
+Consequential external actions require user confirmation.
 
 ---
 
-# 31. Batch Import
+## 19. Notifications
 
-Batch ingestion is required.
+Local notifications support:
 
-The user should be able to import multiple documents in one operation.
+- startup notifications
+- runtime notifications
+- new documents
+- processing failures
+- documents requiring review
+- upcoming deadlines
+- due/overdue tasks
 
-Each document should become an independently trackable processing job.
+Notification state should prevent unwanted duplicates.
 
-A failure in one document must not unnecessarily stop unrelated documents.
-
-The UI should show aggregate progress such as:
-
-- total
-- queued
-- processing
-- completed
-- failed
+Notifications must not require cloud services.
 
 ---
 
-# 32. Duplicate Detection
+## 20. Watched Folders
 
-docnoti must avoid importing the same document repeatedly.
+Watched folders are required.
 
-Duplicate detection may consider:
+```text
+Detect File
+→ Check Stability
+→ Validate
+→ Duplicate Detection
+→ Ingest
+→ Normal Processing Pipeline
+```
 
-- content hash
-- canonical path
-- file metadata
-- source identifiers where available
+The watcher must not contain OCR, AI, task, or calendar logic.
 
-The exact algorithm is an implementation decision.
-
-The system must prevent watcher events, repeated imports, and retries from
-creating duplicate document records or duplicate side effects.
+Files still being copied must not be processed prematurely.
 
 ---
 
-# 33. Search
+## 21. Batch Import and Duplicates
 
-V1 must provide local search.
+Batch import is required.
 
-Search should support, where applicable:
+Each document is independently trackable.
+
+One failed document must not stop unrelated documents.
+
+Duplicate detection should primarily use content hash.
+
+Watcher events, retries, and repeated imports must not create duplicate
+documents or duplicate side effects.
+
+---
+
+## 22. Search UI
+
+V1 local search supports:
 
 - filename
-- document metadata
+- metadata
 - extracted text
 - tasks
 - deadlines
-
-V1 does not require:
-
-- vector database
-- embeddings
+- keyword search
 - semantic search
-- RAG
 
-These may be introduced later behind a stable search boundary.
+Search results should expose relevant excerpts and source locations.
+
+Users must be able to navigate to the source document/page.
+
+Retrieval is a shared capability used by search and AI analysis.
 
 ---
 
-# 34. UI
+## 23. UI
 
-Major views should include:
+Major views:
 
 - Dashboard
 - Documents
@@ -916,34 +718,23 @@ Major views should include:
 - Usage / Cost
 - Settings
 
-The UI should prioritize actionable information and clear processing state.
+UI must not contain provider-specific OCR, AI, embedding, retrieval, database,
+or calendar implementation logic.
 
-The UI must not contain provider-specific OCR, AI, database, or calendar
-implementation logic.
-
----
-
-# 35. Dashboard
-
-The Dashboard should surface:
+Dashboard should surface:
 
 - new documents
-- documents requiring review
+- review items
 - processing failures
 - upcoming deadlines
 - overdue tasks
 - recent documents
-- relevant cloud usage/cost information
-
-The Dashboard should prioritize what requires user attention.
-
----
-
-# 36. Document Detail
+- cloud usage/cost
+- indexing failures requiring attention
 
 Document Detail should expose:
 
-- document metadata
+- metadata
 - processing status
 - document type
 - summary
@@ -953,210 +744,142 @@ Document Detail should expose:
 - evidence
 - analysis history
 - original document
-
-The user should be able to navigate:
-
-```text
-Summary
-   ↓
-Extracted Information
-   ↓
-Evidence
-   ↓
-Original Document
-```
+- relevant indexing state
 
 ---
 
-# 37. Human Confirmation
+## 24. Human Confirmation
 
-The system defines a hard boundary before consequential actions.
+Consequential actions follow:
 
 ```text
 AI Suggestion
-      |
-      v
-Review
-      |
-      v
-Confirmation
-      |
-      v
-Action
+→ Review
+→ Confirmation
+→ Action
 ```
 
-Consequential actions include:
+This includes:
 
-- creating calendar events
-- creating reminders
-- modifying external calendars
-- other future external side effects
+- calendar creation
+- reminders
+- external calendar changes
+- other external side effects
 
-AI output alone must not bypass this boundary.
+AI output must not bypass this boundary.
 
 ---
 
-# 38. Cloud AI Privacy
+## 25. Privacy and Offline Behavior
 
-The default data path is local:
+By default, the following remain local:
 
-```text
-User File
-    |
-    v
-Local Storage
-    |
-    +--> Local Processing
-    +--> Local OCR
-    +--> Local AI
-```
+- documents
+- metadata
+- processing state
+- pages
+- chunks
+- embeddings
+- search indexes
+- vector indexes
+- tasks
+- calendar data
 
-Cloud processing is an explicit alternative:
+Embedding is always local-only.
 
-```text
-Document
-    |
-    v
-Cloud AI Policy
-    |
-    +---- disabled ----> stay local
-    |
-    +---- enabled -----> Cloud AI
-```
+When cloud AI is disabled or unavailable, local functions should continue:
 
-There must be no hidden cloud-upload path.
-
-The application must clearly communicate when cloud AI is being used.
-
----
-
-# 39. Cloud AI Failure
-
-If cloud AI is enabled but unavailable, docnoti should:
-
-- perform bounded retries for retryable failures
-- surface authentication failures
-- surface quota/usage-limit failures
-- preserve the document and processing state
-- mark the job appropriately if processing cannot continue
-
-The application must not silently switch to another paid provider.
-
-Any automatic fallback must be explicitly configured and must respect usage
-and cost limits.
-
----
-
-# 40. Offline Behavior
-
-When cloud AI is disabled or unavailable, the application should continue
-working for:
-
-- document storage
+- storage
 - document management
-- local text extraction
-- local OCR
-- task management
+- PDF extraction
+- OCR
+- chunking
+- embedding
+- FTS5 search
+- vector retrieval
+- tasks
 - internal calendar
-- local notifications
-- local search
+- notifications
 
-AI-dependent functionality may be unavailable when no local AI provider is
-configured.
+Cloud-dependent analysis may be unavailable without a local AI provider.
 
-The UI must communicate unavailable functionality clearly.
+No silent cloud fallback is allowed.
 
 ---
 
-# 41. Privacy and Local Data
-
-User documents are local data.
-
-By default:
-
-- documents are stored locally
-- structured metadata is stored locally
-- processing state is stored locally
-- tasks and calendar data are stored locally
-- local notifications do not require a remote backend
-
-The application must not upload document content to external services unless
-the user has explicitly enabled the relevant feature.
-
----
-
-# 42. Configuration
+## 26. Configuration and Secrets
 
 Users should be able to configure:
 
 - watched folders
-- cloud AI enabled/disabled
-- AI provider
-- AI model
+- cloud AI
+- AI provider/model
 - usage limits
-- notification preferences
+- notifications
 - startup behavior
-- calendar settings
+- calendar
 - processing preferences
+- embedding/indexing preferences
 
-Secrets such as API keys should use secure OS credential storage when
-available.
+External secrets must use secure OS credential storage.
 
----
+API keys must not be stored in:
 
-# 43. Error Handling
-
-The system must distinguish between:
-
-- retryable failure
-- permanent failure
-- user-action-required failure
-
-Errors should identify:
-
-- affected document
-- processing stage
-- provider where relevant
-- useful diagnostic information
-
-Errors must not cause unrelated documents in a batch to fail unnecessarily.
+- source code
+- Git
+- AGENTS.md
+- versioned config
+- SQLite application data
+- logs
+- document metadata
 
 ---
 
-# 44. Performance and Resource Control
+## 27. Performance and Reliability
 
-The system must bound background processing.
+Heavy work must run in the background:
 
-Concurrency should account for:
+- PDF processing
+- OCR
+- chunking
+- embedding
+- AI analysis
 
-- CPU
-- memory
-- OCR capacity
-- local AI capacity
-- cloud provider rate limits
-- cloud usage/cost limits
+The system must bound concurrency based on available resources.
 
-The application must not start unlimited processing or AI requests.
+Jobs must support:
 
----
+- persistence
+- restart recovery
+- idempotency
+- bounded retries
+- explicit failure states
 
-# 45. Data Retention
+Derived indexes must be rebuildable from source data.
 
-The original document must remain available while its document record exists.
-
-Analysis versions should remain available according to the product's
-retention policy and must not be silently overwritten by re-analysis.
-
-Users should be able to delete documents and associated local data through
-explicit application actions.
-
-Exact retention and cleanup policies may be refined during implementation.
+Embedding/retrieval failures must not invalidate the original document.
 
 ---
 
-# 46. Non-Goals for V1
+## 28. Data Retention
 
-The following are explicitly outside V1:
+The original document and source pages remain authoritative while the document
+exists.
+
+Chunks and embeddings are derived data.
+
+Embeddings must be rebuildable from chunks.
+
+Deleting a document should clean up its dependent local data according to
+referential integrity rules.
+
+Analysis history should not be silently destroyed by re-analysis.
+
+---
+
+## 29. Non-Goals for V1
+
+Explicitly outside V1:
 
 - mobile application
 - multi-user collaboration
@@ -1164,226 +887,231 @@ The following are explicitly outside V1:
 - SaaS backend
 - mandatory remote server
 - official Zalo API integration
-- automatic sending of messages or documents
+- automatic message/document sending
 - email integration
 - autonomous external side effects
 - model fine-tuning
-- mandatory RAG
-- mandatory vector database
-- mandatory multi-agent architecture
+- mandatory external RAG framework
+- cloud vector database
+- multi-agent architecture
+- distributed worker system
+- advanced retrieval optimization
+- advanced reranker optimization
 
-These may be considered later if justified.
+Embedding and vector retrieval are part of V1.
 
----
-
-# 47. V1 Acceptance Criteria
-
-## AC-01 — PDF Import
-
-A user can import a PDF manually.
-
-## AC-02 — Drag and Drop
-
-A user can drag a supported PDF into the application.
-
-## AC-03 — Batch Import
-
-A user can import multiple PDFs in one operation.
-
-## AC-04 — Watched Folder
-
-A configured folder can automatically detect and ingest a new supported PDF.
-
-## AC-05 — File Stability
-
-A file that is still being copied is not processed until it is stable.
-
-## AC-06 — Duplicate Prevention
-
-The same document is not repeatedly imported as a new document because of
-duplicate import or watcher events.
-
-## AC-07 — Text Extraction
-
-Text-based PDFs have their text extracted.
-
-## AC-08 — OCR
-
-Scanned/image-based PDFs can be processed through OCR.
-
-## AC-09 — Classification
-
-A processed document receives a document type and confidence information,
-and the user can correct the type.
-
-## AC-10 — Summary
-
-A successfully analyzed document has a useful summary.
-
-## AC-11 — Evidence
-
-Important extracted information can be traced back to source evidence where
-available.
-
-## AC-12 — Information Status
-
-Extracted information can be distinguished as verified, inferred, or
-uncertain.
-
-## AC-13 — Task Extraction
-
-The system can identify tasks from a document.
-
-## AC-14 — Deadline Precision
-
-A date-only deadline does not receive an invented time.
-
-## AC-15 — Task Confirmation
-
-Inferred/uncertain actionable tasks require user confirmation before becoming
-actionable.
-
-## AC-16 — Task Lifecycle
-
-A confirmed task can be marked active, completed, or cancelled.
-
-## AC-17 — Internal Calendar
-
-A confirmed actionable task can be scheduled in the internal calendar.
-
-## AC-18 — Windows Calendar
-
-The architecture provides a Windows Calendar integration boundary and V1
-implementation must support the selected Windows integration mechanism.
-
-## AC-19 — Notifications
-
-The application can issue relevant runtime and startup local notifications.
-
-## AC-20 — Cloud AI Control
-
-The user can explicitly enable or disable cloud AI.
-
-## AC-21 — Cloud Cost Control
-
-Cloud AI usage is recorded and subject to configured usage/cost limits where
-technically possible.
-
-## AC-22 — Analysis Versioning
-
-Re-analysis creates a new analysis version rather than silently overwriting
-the previous version.
-
-## AC-23 — Restart Recovery
-
-Persisted processing jobs survive application restart and can be resumed or
-marked appropriately.
-
-## AC-24 — Bounded Failure
-
-Retries are bounded and failures are surfaced without silently losing the
-document.
+Retrieval optimization is deferred.
 
 ---
 
-# 48. Future Scope
+## 30. Future Scope
 
-Potential future capabilities include:
+Potential future capabilities:
 
 - DOCX processing
 - additional document types
-- improved document-specific extraction schemas
+- improved extraction schemas
 - local AI improvements
-- semantic search
-- embeddings
+- embedding model benchmarking
+- embedding dimension optimization
+- hybrid retrieval optimization
+- advanced reranking
+- semantic search improvements
 - RAG
 - additional calendar providers
 - additional OCR engines
-- Zalo integration if technically and legally appropriate
+- additional embedding providers if privacy policy permits
+- Zalo integration if appropriate
 - email ingestion
 - richer automation
 - document relationships
+- cross-document reasoning
 - advanced analytics
 
-Future capabilities must not weaken the local-first, evidence-first, privacy,
-cost-control, or confirmation principles.
+Future work must preserve:
+
+- local-first
+- privacy-first
+- evidence-first
+- source-of-truth preservation
+- cost control
+- human confirmation
 
 ---
 
-# 49. Open Technology Decisions
+## 31. V1 Acceptance Criteria
 
-The following are intentionally not fixed by this specification:
+### Document
 
-- programming language
-- frontend framework
-- desktop runtime
-- database technology
-- PDF extraction library
-- OCR engine
-- local AI runtime
-- cloud AI providers
-- AI SDK
-- Windows Calendar integration mechanism
-- notification mechanism
-- worker implementation
-- credential storage mechanism
-- packaging mechanism
-- auto-start mechanism
+- [ ] PDF import
+- [ ] Drag and drop
+- [ ] Batch import
+- [ ] Watched folders
+- [ ] File stability detection
+- [ ] Duplicate prevention
+- [ ] Text extraction
+- [ ] OCR
+- [ ] Classification
 
-These are architecture/technology decisions rather than product
-requirements.
+### Embedding
+
+- [ ] Deterministic chunking
+- [ ] Page/paragraph provenance
+- [ ] Local `jina-embeddings-v5-text-small`
+- [ ] Full valid chunk coverage
+- [ ] SQLite + vector extension
+- [ ] Persistent embedding jobs
+- [ ] Retry/idempotency/recovery
+- [ ] Embedding failure isolation
+
+### Retrieval
+
+- [ ] SQLite FTS5
+- [ ] Vector search
+- [ ] Hybrid candidate retrieval
+- [ ] Candidate merge
+- [ ] Reranker boundary
+- [ ] Context Builder
+- [ ] Context budget
+- [ ] Provenance preservation
+
+### AI
+
+- [ ] AIProvider abstraction
+- [ ] OpenAI cloud provider
+- [ ] Cloud AI opt-in
+- [ ] No silent cloud fallback
+- [ ] Retrieval-based targeted analysis
+- [ ] Long-document hierarchical processing
+- [ ] Summary
+- [ ] Evidence validation
+- [ ] VERIFIED / INFERRED / UNCERTAIN
+- [ ] Analysis versioning
+
+### Tasks / Calendar
+
+- [ ] Task extraction
+- [ ] Deadline precision
+- [ ] User confirmation
+- [ ] Task lifecycle
+- [ ] Internal calendar
+- [ ] Windows Calendar integration
+- [ ] Runtime notifications
+- [ ] Startup notifications
+
+### Privacy
+
+- [ ] Documents remain local
+- [ ] Embeddings remain local
+- [ ] Secrets use secure storage
+- [ ] Cloud AI is explicitly controlled
+- [ ] Relevant context is preferred over full-document cloud prompting
+- [ ] No critical data-loss/privacy issue
 
 ---
 
-# 50. Specification Change Policy
+## 32. Architecture Invariants
 
-This document is the product baseline for V1.
+### INV-01 — Source of Truth
 
-Changes that affect:
+Original documents, pages, and source text are authoritative.
+
+### INV-02 — Derived Embeddings
+
+Embeddings are derived indexes and must be rebuildable.
+
+### INV-03 — Local Embedding
+
+Document content must never be sent to an external embedding service.
+
+### INV-04 — Full Corpus Coverage
+
+All valid document chunks are eligible for embedding.
+
+### INV-05 — Retrieval Before Unnecessary Full Context
+
+Targeted analysis should retrieve relevant context rather than sending the
+entire document by default.
+
+### INV-06 — Long-document Control
+
+Long documents use controlled hierarchical processing.
+
+### INV-07 — Evidence Validation
+
+Retrieved content does not automatically establish truth.
+
+### INV-08 — Privacy Boundary
+
+Cloud AI only receives context allowed by user configuration and analysis
+strategy.
+
+### INV-09 — Human Confirmation
+
+Consequential AI-generated actions cannot bypass confirmation.
+
+### INV-10 — Failure Isolation
+
+Embedding, vector indexing, and retrieval failures must not destroy or
+invalidate source documents.
+
+---
+
+## 33. Definition of Done
+
+A feature is complete only when:
+
+1. Implementation follows the architecture.
+2. Appropriate tests exist.
+3. Required validation has actually been executed.
+4. Privacy invariants are preserved.
+5. Evidence/provenance invariants are preserved.
+6. No silent cloud fallback exists.
+7. Unsupported inference is not represented as verified fact.
+8. Background jobs have explicit failure/retry behavior where applicable.
+9. Derived indexes remain rebuildable from source data.
+10. Relevant documentation is updated.
+11. Final diff has been inspected.
+12. Acceptance criteria have been checked.
+13. The agent does not claim PASS when required validation has not actually
+    been executed.
+
+---
+
+## 34. Specification Change Policy
+
+This document is the V1 product baseline.
+
+Changes affecting:
 
 - core user journey
-- privacy behavior
-- cloud AI policy
+- privacy
+- cloud AI
+- embedding privacy
+- retrieval architecture
+- evidence
 - task semantics
-- evidence requirements
 - calendar side effects
 - notification behavior
 - V1 scope
 - acceptance criteria
 
-must be made deliberately.
+must be deliberate.
 
-Significant changes should be documented before implementation.
+Significant architecture changes should be documented through an ADR before
+implementation.
+
+Required flow:
+
+```text
+Requirement Change
+→ SPEC
+→ ARCHITECTURE
+→ ADR
+→ Implementation
+→ Tests
+→ Validation
+```
 
 Agents must not silently change product requirements to make implementation
 easier.
-
----
-
-# 51. V1 Definition of Done
-
-The V1 product is considered ready for release when:
-
-1. Required PDF ingestion works.
-2. Batch import works.
-3. Watched folders work.
-4. Text extraction works.
-5. OCR works.
-6. Classification works.
-7. AI analysis works through the selected provider architecture.
-8. Summaries are generated.
-9. Important information preserves evidence.
-10. Verified/inferred/uncertain states are represented.
-11. Tasks and deadlines are extracted.
-12. Deadline precision is preserved.
-13. User confirmation works.
-14. Internal calendar works.
-15. Selected Windows Calendar integration works.
-16. Runtime and startup notifications work.
-17. Cloud AI usage is explicitly controlled.
-18. Usage/cost tracking works within the supported provider capabilities.
-19. Analysis versioning works.
-20. Restart recovery works.
-21. Duplicate processing is controlled.
-22. Relevant automated tests pass.
-23. No critical known privacy or data-loss issue remains.

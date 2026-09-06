@@ -75,6 +75,24 @@ CREATE INDEX IF NOT EXISTS idx_document_analyses_document_id ON document_analyse
 CREATE UNIQUE INDEX IF NOT EXISTS idx_document_analyses_doc_version ON document_analyses(document_id, version);
 `
 
+export const DOCUMENT_CHUNKS_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS document_chunks (
+  id TEXT PRIMARY KEY NOT NULL,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  page_number INTEGER NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  char_start INTEGER,
+  char_end INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_chunks_document_id ON document_chunks(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_chunks_doc_page ON document_chunks(document_id, page_number);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_document_chunks_doc_chunk_idx ON document_chunks(document_id, chunk_index);
+`
+
 interface MigrationItem {
   id: string
   sql: string
@@ -93,7 +111,12 @@ const MIGRATIONS: MigrationItem[] = [
     id: "0002_document_analyses",
     sql: DOCUMENT_ANALYSES_MIGRATION_SQL,
   },
+  {
+    id: "0003_document_chunks",
+    sql: DOCUMENT_CHUNKS_MIGRATION_SQL,
+  },
 ]
+
 
 
 export async function runMigrations(executor: MigrationExecutor): Promise<void> {

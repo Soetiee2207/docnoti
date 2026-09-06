@@ -5,6 +5,7 @@ import type { StorageService } from "@/services/storage"
 import type { PDFProcessor, PDFProcessingResult } from "@/services/pdf/types"
 import type { OCRService } from "@/services/ocr/ocrService"
 import type { AnalysisService } from "@/services/ai/analysisService"
+import type { ChunkingService } from "@/services/chunking"
 import { AIError } from "@/services/ai/types"
 import type { ProcessingJobRecord } from "@/db/schema"
 
@@ -26,6 +27,7 @@ export class DocumentWorker {
   private pdfProcessor: PDFProcessor
   private ocrService?: OCRService
   private analysisService?: AnalysisService
+  private chunkingService?: ChunkingService
   private autoAnalyze: boolean = false
   private isRunning = false
 
@@ -37,7 +39,8 @@ export class DocumentWorker {
     pdfProcessor: PDFProcessor,
     ocrService?: OCRService,
     analysisService?: AnalysisService,
-    autoAnalyze: boolean = false
+    autoAnalyze: boolean = false,
+    chunkingService?: ChunkingService
   ) {
     this.documentRepo = documentRepo
     this.jobRepo = jobRepo
@@ -47,6 +50,7 @@ export class DocumentWorker {
     this.ocrService = ocrService
     this.analysisService = analysisService
     this.autoAnalyze = autoAnalyze
+    this.chunkingService = chunkingService
   }
 
   /**
@@ -62,6 +66,14 @@ export class DocumentWorker {
   setAnalysisService(analysisService: AnalysisService): void {
     this.analysisService = analysisService
   }
+
+  /**
+   * Set or update the Chunking service on this worker
+   */
+  setChunkingService(chunkingService: ChunkingService): void {
+    this.chunkingService = chunkingService
+  }
+
 
   /**
    * Configure whether processed documents automatically transition to analysis
@@ -227,7 +239,10 @@ export class DocumentWorker {
         updatedAt: now,
       })
     } else {
-      // Sufficient text extracted
+      // Sufficient text extracted: chunk finalized pages if chunkingService is configured
+      if (this.chunkingService) {
+        await this.chunkingService.chunkAndSave(documentId)
+      }
       await this.documentRepo.updateStatus(documentId, "processed")
       if (this.autoAnalyze && this.analysisService) {
         await this.enqueueAnalysisJob(documentId)
@@ -295,11 +310,15 @@ export class DocumentWorker {
       )
     }
 
-    // Step 7: Document is no longer needs_ocr; transition to processed (ready for analysis)
+    // Step 7: Document is no longer needs_ocr; chunk finalized pages and transition to processed
+    if (this.chunkingService) {
+      await this.chunkingService.chunkAndSave(documentId)
+    }
     await this.documentRepo.updateStatus(documentId, "processed")
     if (this.autoAnalyze && this.analysisService) {
       await this.enqueueAnalysisJob(documentId)
     }
+
 
     // Step 8: Mark OCR job as completed
     await this.jobRepo.updateStatus(jobId, "completed")

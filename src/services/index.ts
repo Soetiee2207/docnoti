@@ -2,6 +2,7 @@ import { initDb, type AppDatabase } from "@/db/client"
 import { DocumentRepository } from "@/repositories/documentRepository"
 import { ProcessingJobRepository } from "@/repositories/processingJobRepository"
 import { DocumentPageRepository } from "@/repositories/documentPageRepository"
+import { DocumentChunkRepository } from "@/repositories/documentChunkRepository"
 import { AnalysisRepository } from "@/repositories/analysisRepository"
 import {
   TauriStorageService,
@@ -31,6 +32,9 @@ import {
   type SecretsService,
   InMemorySecretsService,
 } from "./secrets"
+import {
+  ChunkingService,
+} from "./chunking"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -44,6 +48,7 @@ export interface AppServices {
   documentRepo: DocumentRepository
   jobRepo: ProcessingJobRepository
   pageRepo: DocumentPageRepository
+  chunkRepo: DocumentChunkRepository
   analysisRepo: AnalysisRepository
   secretsService: SecretsService
   storageService: StorageService
@@ -51,6 +56,7 @@ export interface AppServices {
   ocrProvider: OCRProvider
   pageRenderer: PageRenderer
   ocrService: OCRService
+  chunkingService: ChunkingService
   ingestionService: DocumentIngestionService
   documentWorker: DocumentWorker
   aiProvider: AIProvider
@@ -60,6 +66,7 @@ export interface AppServices {
   aiProviderSelector: AIProviderSelector
   analysisService: AnalysisService
 }
+
 
 
 
@@ -82,7 +89,9 @@ export async function getAppServices(): Promise<AppServices> {
       const documentRepo = new DocumentRepository(db)
       const jobRepo = new ProcessingJobRepository(db)
       const pageRepo = new DocumentPageRepository(db)
+      const chunkRepo = new DocumentChunkRepository(db)
       const analysisRepo = new AnalysisRepository(db)
+      const chunkingService = new ChunkingService(chunkRepo, pageRepo)
       const storageService: StorageService = isTauriEnvironment()
         ? new TauriStorageService()
         : new InMemoryStorageService()
@@ -128,7 +137,9 @@ export async function getAppServices(): Promise<AppServices> {
         storageService,
         pdfProcessor,
         ocrService,
-        analysisService
+        analysisService,
+        false,
+        chunkingService
       )
 
       servicesInstance = {
@@ -136,6 +147,7 @@ export async function getAppServices(): Promise<AppServices> {
         documentRepo,
         jobRepo,
         pageRepo,
+        chunkRepo,
         analysisRepo,
         secretsService,
         storageService,
@@ -143,6 +155,7 @@ export async function getAppServices(): Promise<AppServices> {
         ocrProvider,
         pageRenderer,
         ocrService,
+        chunkingService,
         ingestionService,
         documentWorker,
         aiProvider,
@@ -152,7 +165,6 @@ export async function getAppServices(): Promise<AppServices> {
         aiProviderSelector,
         analysisService,
       }
-
 
       return servicesInstance
     } finally {
@@ -170,5 +182,7 @@ export function resetAppServices(): void {
 
 export * from "./ai"
 export * from "./secrets"
+export * from "./chunking"
+
 
 
