@@ -13,7 +13,7 @@ import type {
 } from './types';
 
 export interface AnalysisServiceDeps {
-  aiProvider: AIProvider;
+  aiProvider: AIProvider | (() => AIProvider);
   analysisRepo?: AnalysisRepository;
   documentRepo?: DocumentRepository;
   pageRepo?: DocumentPageRepository;
@@ -25,7 +25,7 @@ export interface AnalyzeDocumentOptions {
 }
 
 export class AnalysisService {
-  private aiProvider: AIProvider;
+  private aiProvider: AIProvider | (() => AIProvider);
   private analysisRepo?: AnalysisRepository;
   private documentRepo?: DocumentRepository;
   private pageRepo?: DocumentPageRepository;
@@ -36,6 +36,15 @@ export class AnalysisService {
     this.documentRepo = deps.documentRepo;
     this.pageRepo = deps.pageRepo;
   }
+
+  getProvider(): AIProvider {
+    return typeof this.aiProvider === 'function' ? this.aiProvider() : this.aiProvider;
+  }
+
+  setProvider(provider: AIProvider | (() => AIProvider)): void {
+    this.aiProvider = provider;
+  }
+
 
   /**
    * Prepares an AnalysisRequest from document metadata and extracted pages.
@@ -220,7 +229,8 @@ export class AnalysisService {
     }
 
     const request = this.prepareRequest(document, pages, options);
-    const rawResult = await this.aiProvider.analyze(request);
+    const provider = this.getProvider();
+    const rawResult = await provider.analyze(request);
     const validatedResult = this.validateResult(rawResult, pages);
 
     let savedRecord: DocumentAnalysisRecord | undefined;

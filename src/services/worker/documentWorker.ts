@@ -4,6 +4,8 @@ import type { DocumentPageRepository } from "@/repositories/documentPageReposito
 import type { StorageService } from "@/services/storage"
 import type { PDFProcessor, PDFProcessingResult } from "@/services/pdf/types"
 import type { OCRService } from "@/services/ocr/ocrService"
+import type { AnalysisService } from "@/services/ai/analysisService"
+import { AIError } from "@/services/ai/types"
 import type { ProcessingJobRecord } from "@/db/schema"
 
 export interface WorkerJobResult {
@@ -23,6 +25,8 @@ export class DocumentWorker {
   private storageService: StorageService
   private pdfProcessor: PDFProcessor
   private ocrService?: OCRService
+  private analysisService?: AnalysisService
+  private autoAnalyze: boolean = false
   private isRunning = false
 
   constructor(
@@ -31,7 +35,9 @@ export class DocumentWorker {
     pageRepo: DocumentPageRepository,
     storageService: StorageService,
     pdfProcessor: PDFProcessor,
-    ocrService?: OCRService
+    ocrService?: OCRService,
+    analysisService?: AnalysisService,
+    autoAnalyze: boolean = false
   ) {
     this.documentRepo = documentRepo
     this.jobRepo = jobRepo
@@ -39,6 +45,8 @@ export class DocumentWorker {
     this.storageService = storageService
     this.pdfProcessor = pdfProcessor
     this.ocrService = ocrService
+    this.analysisService = analysisService
+    this.autoAnalyze = autoAnalyze
   }
 
   /**
@@ -46,6 +54,53 @@ export class DocumentWorker {
    */
   setOcrService(ocrService: OCRService): void {
     this.ocrService = ocrService
+  }
+
+  /**
+   * Set or update the Analysis service on this worker
+   */
+  setAnalysisService(analysisService: AnalysisService): void {
+    this.analysisService = analysisService
+  }
+
+  /**
+   * Configure whether processed documents automatically transition to analysis
+   */
+  setAutoAnalyze(autoAnalyze: boolean): void {
+    this.autoAnalyze = autoAnalyze
+  }
+
+  /**
+   * Idempotently enqueues an analysis job for a document.
+   * If an analysis job is already pending or processing, returns that job instead of creating a duplicate.
+   */
+  async enqueueAnalysisJob(documentId: string): Promise<ProcessingJobRecord> {
+    const document = await this.documentRepo.findById(documentId)
+    if (!document) {
+      throw new Error(`Tài liệu với ID ${documentId} không tồn tại.`)
+    }
+
+    // Idempotency: Check if an analysis job is already active
+    const existingJobs = await this.jobRepo.findByDocumentId(documentId)
+    const activeJob = existingJobs.find(
+      (j) => j.jobType === "analysis" && (j.status === "pending" || j.status === "processing")
+    )
+    if (activeJob) {
+      return activeJob
+    }
+
+    const now = new Date().toISOString()
+    const jobId = `job-analysis-${documentId}-${Date.now()}`
+    return this.jobRepo.create({
+      id: jobId,
+      documentId,
+      jobType: "analysis",
+      status: "pending",
+      retryCount: 0,
+      maxRetries: 3,
+      createdAt: now,
+      updatedAt: now,
+    })
   }
 
   /**
@@ -70,6 +125,8 @@ export class DocumentWorker {
     try {
       if (jobType === "ocr") {
         return await this.processOcrJob(claimedJob)
+      } else if (jobType === "analysis") {
+        return await this.processAnalysisJob(claimedJob)
       } else {
         return await this.processPdfJob(claimedJob)
       }
@@ -77,14 +134,31 @@ export class DocumentWorker {
       const errorMessage = err instanceof Error ? err.message : String(err)
       console.error(`DocumentWorker job ${jobId} (${jobType}) failed:`, errorMessage)
 
+      // Do not retry non-retryable AI errors (e.g. auth or missing config)
+      const isNonRetryable = err instanceof AIError && !err.retryable
+      if (isNonRetryable) {
+        await this.jobRepo.updateStatus(jobId, "failed", errorMessage)
+        await this.documentRepo.updateStatus(documentId, jobType === "analysis" ? "analysis_failed" : "failed")
+        return {
+          jobId,
+          documentId,
+          jobType,
+          success: false,
+          error: errorMessage,
+        }
+      }
+
       // Bounded retry handling
       const retryResult = await this.jobRepo.failOrRetry(jobId, errorMessage)
       if (!retryResult.retrying) {
         // Retries exhausted, mark document as failed
-        await this.documentRepo.updateStatus(documentId, "failed")
+        await this.documentRepo.updateStatus(documentId, jobType === "analysis" ? "analysis_failed" : "failed")
       } else if (jobType === "ocr") {
         // While retrying OCR, retain needs_ocr status on document
         await this.documentRepo.updateStatus(documentId, "needs_ocr")
+      } else if (jobType === "analysis") {
+        // While retrying analysis, keep status as processed
+        await this.documentRepo.updateStatus(documentId, "processed")
       }
 
       return {
@@ -96,6 +170,7 @@ export class DocumentWorker {
       }
     }
   }
+
 
   /**
    * Execute PDF text extraction job
@@ -154,6 +229,9 @@ export class DocumentWorker {
     } else {
       // Sufficient text extracted
       await this.documentRepo.updateStatus(documentId, "processed")
+      if (this.autoAnalyze && this.analysisService) {
+        await this.enqueueAnalysisJob(documentId)
+      }
     }
 
     // Step 7: Mark current job as completed
@@ -219,6 +297,9 @@ export class DocumentWorker {
 
     // Step 7: Document is no longer needs_ocr; transition to processed (ready for analysis)
     await this.documentRepo.updateStatus(documentId, "processed")
+    if (this.autoAnalyze && this.analysisService) {
+      await this.enqueueAnalysisJob(documentId)
+    }
 
     // Step 8: Mark OCR job as completed
     await this.jobRepo.updateStatus(jobId, "completed")
@@ -230,6 +311,37 @@ export class DocumentWorker {
       success: true,
       needsOcr: false,
       pageCount: ocrResult.pages.length,
+    }
+  }
+
+  /**
+   * Execute analysis job on processed document
+   */
+  private async processAnalysisJob(job: ProcessingJobRecord): Promise<WorkerJobResult> {
+    const jobId = job.id
+    const documentId = job.documentId
+
+    if (!this.analysisService) {
+      throw new Error("AnalysisService chưa được cấu hình cho DocumentWorker.")
+    }
+
+    // Step 1: Update document status to analyzing
+    await this.documentRepo.updateStatus(documentId, "analyzing")
+
+    // Step 2: Execute analysis pipeline
+    await this.analysisService.analyzeDocument(documentId)
+
+    // Step 3: Transition document to analyzed
+    await this.documentRepo.updateStatus(documentId, "analyzed")
+
+    // Step 4: Mark job as completed
+    await this.jobRepo.updateStatus(jobId, "completed")
+
+    return {
+      jobId,
+      documentId,
+      jobType: "analysis",
+      success: true,
     }
   }
 

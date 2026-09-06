@@ -24,6 +24,8 @@ import {
   MockAIProvider,
   OpenAIProvider,
   AnalysisService,
+  AIConfigService,
+  AIProviderSelector,
 } from "./ai"
 import {
   type SecretsService,
@@ -54,8 +56,11 @@ export interface AppServices {
   aiProvider: AIProvider
   mockAiProvider: MockAIProvider
   openAiProvider: OpenAIProvider
+  aiConfigService: AIConfigService
+  aiProviderSelector: AIProviderSelector
   analysisService: AnalysisService
 }
+
 
 
 
@@ -90,11 +95,21 @@ export async function getAppServices(): Promise<AppServices> {
       const secretsService: SecretsService = new InMemorySecretsService()
       const mockAiProvider = new MockAIProvider()
       const openAiProvider = new OpenAIProvider(secretsService)
-      // Default to mockAiProvider for local/offline execution; user opt-in will swap to openAiProvider
+      const aiConfigService = new AIConfigService({
+        providerType: 'mock',
+        cloudEnabled: false,
+      })
+      const aiProviderSelector = new AIProviderSelector(
+        mockAiProvider,
+        openAiProvider,
+        aiConfigService
+      )
+
+      // Dynamically resolves provider according to strict opt-in policy
       const aiProvider: AIProvider = mockAiProvider
 
       const analysisService = new AnalysisService({
-        aiProvider,
+        aiProvider: () => aiProviderSelector.getActiveProvider(),
         analysisRepo,
         documentRepo,
         pageRepo,
@@ -112,7 +127,8 @@ export async function getAppServices(): Promise<AppServices> {
         pageRepo,
         storageService,
         pdfProcessor,
-        ocrService
+        ocrService,
+        analysisService
       )
 
       servicesInstance = {
@@ -132,8 +148,11 @@ export async function getAppServices(): Promise<AppServices> {
         aiProvider,
         mockAiProvider,
         openAiProvider,
+        aiConfigService,
+        aiProviderSelector,
         analysisService,
       }
+
 
       return servicesInstance
     } finally {
