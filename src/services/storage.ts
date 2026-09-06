@@ -75,7 +75,7 @@ export class InMemoryStorageService implements StorageService {
   }
 
   setFileBuffer(storagePath: string, buffer: Uint8Array): void {
-    this.fileBuffers.set(storagePath, buffer)
+    this.fileBuffers.set(storagePath, new Uint8Array(buffer.slice(0)))
   }
 
   async readFile(storagePath: string): Promise<Uint8Array> {
@@ -83,7 +83,7 @@ export class InMemoryStorageService implements StorageService {
     if (!buffer) {
       throw new Error(`File not found in storage: ${storagePath}`)
     }
-    return buffer
+    return new Uint8Array(buffer.slice(0))
   }
 
   hasFile(storagePath: string): boolean {

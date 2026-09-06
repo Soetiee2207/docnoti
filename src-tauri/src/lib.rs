@@ -1,5 +1,6 @@
 mod db;
 mod storage;
+mod ocr;
 
 use rusqlite::Connection;
 use std::fs;
@@ -47,7 +48,9 @@ pub fn run() {
             db::db_query,
             storage::import_pdf_file,
             storage::delete_stored_file,
-            storage::read_stored_file
+            storage::read_stored_file,
+            ocr::check_ocr_available,
+            ocr::run_ocr_on_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

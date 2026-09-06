@@ -11,6 +11,13 @@ import { DocumentIngestionService } from "./ingestionService"
 import { type PDFProcessor } from "./pdf/types"
 import { PdfJsProcessor } from "./pdf/pdfJsProcessor"
 import { DocumentWorker } from "./worker/documentWorker"
+import {
+  CanvasPageRenderer,
+  PaddleOCRProvider,
+  OCRService,
+  type OCRProvider,
+  type PageRenderer,
+} from "./ocr"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -26,6 +33,9 @@ export interface AppServices {
   pageRepo: DocumentPageRepository
   storageService: StorageService
   pdfProcessor: PDFProcessor
+  ocrProvider: OCRProvider
+  pageRenderer: PageRenderer
+  ocrService: OCRService
   ingestionService: DocumentIngestionService
   documentWorker: DocumentWorker
 }
@@ -53,6 +63,10 @@ export async function getAppServices(): Promise<AppServices> {
         : new InMemoryStorageService()
       const pdfProcessor: PDFProcessor = new PdfJsProcessor()
 
+      const pageRenderer = new CanvasPageRenderer(2.0)
+      const ocrProvider = new PaddleOCRProvider()
+      const ocrService = new OCRService(ocrProvider, pageRenderer)
+
       const ingestionService = new DocumentIngestionService(
         documentRepo,
         jobRepo,
@@ -64,7 +78,8 @@ export async function getAppServices(): Promise<AppServices> {
         jobRepo,
         pageRepo,
         storageService,
-        pdfProcessor
+        pdfProcessor,
+        ocrService
       )
 
       servicesInstance = {
@@ -74,6 +89,9 @@ export async function getAppServices(): Promise<AppServices> {
         pageRepo,
         storageService,
         pdfProcessor,
+        ocrProvider,
+        pageRenderer,
+        ocrService,
         ingestionService,
         documentWorker,
       }
@@ -85,4 +103,9 @@ export async function getAppServices(): Promise<AppServices> {
   })()
 
   return servicesPromise
+}
+
+export function resetAppServices(): void {
+  servicesInstance = null
+  servicesPromise = null
 }

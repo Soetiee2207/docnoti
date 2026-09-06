@@ -66,6 +66,18 @@ export function createEmptyScannedPdf(): Uint8Array {
   return buildPdfBuffer([""])
 }
 
+export function createMultiPageScannedPdf(): Uint8Array {
+  return buildPdfBuffer(["", "", ""])
+}
+
+export function createMixedPdf(): Uint8Array {
+  return buildPdfBuffer([
+    "Trang mot co day du noi dung van ban hop dong da duoc so hoa.",
+    "", // Trang hai la ban scan con dau, khong co text layer
+  ])
+}
+
 export function createCorruptedPdf(): Uint8Array {
   return new Uint8Array(Buffer.from("This is definitely not a valid PDF content header", "utf-8"))
 }
+

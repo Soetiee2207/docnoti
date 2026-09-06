@@ -29,7 +29,7 @@ export class PdfJsProcessor implements PDFProcessor {
 
     try {
       const loadingTask = pdfjsLib.getDocument({
-        data: fileData,
+        data: fileData.slice(0),
         useSystemFonts: true,
       })
 
@@ -88,9 +88,8 @@ export class PdfJsProcessor implements PDFProcessor {
         })
       }
 
-      // Document is considered to have sufficient text if at least one page meets the threshold
-      // and total character count is reasonable
-      const isSufficientText = pages.some((p) => p.hasSufficientText) && totalCharacters >= this.minCharsPerPage
+      // Document is considered to have sufficient text only if all pages meet the threshold
+      const isSufficientText = pages.length > 0 && pages.every((p) => p.hasSufficientText)
       const needsOcr = !isSufficientText
 
       return {

@@ -244,10 +244,10 @@ export function DocumentsView({
                     <StatusBadge status={doc.status} />
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground">
-                    {doc.status === "processed" && "Trích xuất thành công"}
-                    {doc.status === "needs_ocr" && "Không có text layer (Cần OCR)"}
-                    {doc.status === "processing" && "Đang trích xuất văn bản..."}
-                    {doc.status === "failed" && "Lỗi xử lý tài liệu"}
+                    {doc.status === "processed" && "Đã xử lý (Trích xuất / OCR hoàn tất)"}
+                    {doc.status === "needs_ocr" && "Không có text layer (Chờ OCR)"}
+                    {doc.status === "processing" && "Đang xử lý trích xuất / OCR..."}
+                    {doc.status === "failed" && "Lỗi xử lý (Trích xuất / OCR)"}
                     {doc.status === "imported" && "Chờ worker thực thi"}
                     {doc.status !== "processed" &&
                       doc.status !== "needs_ocr" &&

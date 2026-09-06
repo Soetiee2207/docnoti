@@ -35,4 +35,23 @@ export class DocumentPageRepository {
       await this.db.insert(documentPages).values(page).run()
     }
   }
+
+  async updatePage(
+    id: string,
+    textContent: string,
+    charCount: number,
+    hasSufficientText: number
+  ): Promise<void> {
+    const now = new Date().toISOString()
+    await this.db
+      .update(documentPages)
+      .set({
+        textContent,
+        charCount,
+        hasSufficientText,
+        updatedAt: now,
+      })
+      .where(eq(documentPages.id, id))
+      .run()
+  }
 }
