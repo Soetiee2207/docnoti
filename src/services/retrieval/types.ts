@@ -23,6 +23,8 @@ export interface HybridRetrievalOptions {
   lexicalLimit?: number
   /** Maximum number of candidate chunks to fetch from vector search. Defaults to 20. */
   vectorLimit?: number
+  /** Minimum cosine similarity threshold for vector candidates. */
+  minVectorScore?: number
   /** Scope retrieval to a specific document. */
   documentId?: string
   /** Smoothing constant k for RRF calculation: 1 / (k + rank). Defaults to 60. */

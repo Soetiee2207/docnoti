@@ -27,6 +27,7 @@ import {
   AnalysisService,
   AIConfigService,
   AIProviderSelector,
+  ContextBuilder,
 } from "./ai"
 import {
   type SecretsService,
@@ -80,6 +81,7 @@ export interface AppServices {
   aiConfigService: AIConfigService
   aiProviderSelector: AIProviderSelector
   analysisService: AnalysisService
+  contextBuilder: ContextBuilder
 }
 
 
@@ -147,11 +149,15 @@ export async function getAppServices(): Promise<AppServices> {
       // Dynamically resolves provider according to strict opt-in policy
       const aiProvider: AIProvider = mockAiProvider
 
+      const contextBuilder = new ContextBuilder()
+
       const analysisService = new AnalysisService({
         aiProvider: () => aiProviderSelector.getActiveProvider(),
         analysisRepo,
         documentRepo,
         pageRepo,
+        hybridRetrievalService,
+        contextBuilder,
       })
 
       const ingestionService = new DocumentIngestionService(
@@ -201,6 +207,7 @@ export async function getAppServices(): Promise<AppServices> {
         aiConfigService,
         aiProviderSelector,
         analysisService,
+        contextBuilder,
       }
 
       return servicesInstance

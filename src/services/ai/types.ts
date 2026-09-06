@@ -71,6 +71,8 @@ export interface AnalysisRequest {
     preferredLanguage?: string;
     temperature?: number;
     forceRefresh?: boolean;
+    query?: string;
+    isRetrievalGrounded?: boolean;
   };
 }
 

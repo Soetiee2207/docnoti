@@ -107,6 +107,7 @@ export class HybridRetrievalService {
           limit: vectorLimit,
           documentId: options?.documentId,
           model: this.embeddingProvider.model,
+          minScore: options?.minVectorScore,
         })
       } catch (err) {
         isDegraded = true

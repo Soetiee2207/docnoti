@@ -2,6 +2,8 @@ import type { DocumentRecord, DocumentPageRecord, DocumentAnalysisRecord } from 
 import type { DocumentRepository } from '@/repositories/documentRepository';
 import type { DocumentPageRepository } from '@/repositories/documentPageRepository';
 import type { AnalysisRepository } from '@/repositories/analysisRepository';
+import type { HybridRetrievalService, HybridRetrievalResult } from '@/services/retrieval';
+import { ContextBuilder, type BuiltContext, type ContextBudgetConfig } from './context';
 
 import type {
   AIProvider,
@@ -17,11 +19,23 @@ export interface AnalysisServiceDeps {
   analysisRepo?: AnalysisRepository;
   documentRepo?: DocumentRepository;
   pageRepo?: DocumentPageRepository;
+  hybridRetrievalService?: HybridRetrievalService;
+  contextBuilder?: ContextBuilder;
 }
 
 export interface AnalyzeDocumentOptions {
   preferredLanguage?: string;
   forceRefresh?: boolean;
+  query?: string;
+  mode?: 'retrieval' | 'full';
+  budget?: ContextBudgetConfig;
+  minVectorScore?: number;
+}
+
+export interface AnalyzeDocumentResult {
+  result: AnalysisResult;
+  record?: DocumentAnalysisRecord;
+  context?: BuiltContext;
 }
 
 export class AnalysisService {
@@ -29,12 +43,16 @@ export class AnalysisService {
   private analysisRepo?: AnalysisRepository;
   private documentRepo?: DocumentRepository;
   private pageRepo?: DocumentPageRepository;
+  private hybridRetrievalService?: HybridRetrievalService;
+  private contextBuilder: ContextBuilder;
 
   constructor(deps: AnalysisServiceDeps) {
     this.aiProvider = deps.aiProvider;
     this.analysisRepo = deps.analysisRepo;
     this.documentRepo = deps.documentRepo;
     this.pageRepo = deps.pageRepo;
+    this.hybridRetrievalService = deps.hybridRetrievalService;
+    this.contextBuilder = deps.contextBuilder ?? new ContextBuilder();
   }
 
   getProvider(): AIProvider {
@@ -45,9 +63,20 @@ export class AnalysisService {
     this.aiProvider = provider;
   }
 
+  getContextBuilder(): ContextBuilder {
+    return this.contextBuilder;
+  }
+
+  setContextBuilder(builder: ContextBuilder): void {
+    this.contextBuilder = builder;
+  }
+
+  setHybridRetrievalService(service: HybridRetrievalService): void {
+    this.hybridRetrievalService = service;
+  }
 
   /**
-   * Prepares an AnalysisRequest from document metadata and extracted pages.
+   * Prepares an AnalysisRequest from document metadata and extracted pages (full-document mode).
    */
   prepareRequest(
     document: DocumentRecord,
@@ -67,6 +96,30 @@ export class AnalysisService {
       options: {
         preferredLanguage: options?.preferredLanguage,
         forceRefresh: options?.forceRefresh,
+        query: options?.query,
+      },
+    };
+  }
+
+  /**
+   * Prepares an AnalysisRequest bounded by ContextBuilder (retrieval-augmented mode).
+   * Ensures unbounded raw page text is never sent directly to AI providers.
+   */
+  prepareBoundedRequest(
+    document: DocumentRecord,
+    context: BuiltContext,
+    options?: AnalyzeDocumentOptions
+  ): AnalysisRequest {
+    return {
+      documentId: document.id,
+      fileName: document.name,
+      mimeType: document.mimeType,
+      pages: context.pages,
+      options: {
+        preferredLanguage: options?.preferredLanguage,
+        forceRefresh: options?.forceRefresh,
+        query: options?.query,
+        isRetrievalGrounded: true,
       },
     };
   }
@@ -79,8 +132,8 @@ export class AnalysisService {
   }
 
   /**
-   * Verifies an evidence item against the source document pages.
-   * If a citation refers to a non-existent page or quotes text not present in the page,
+   * Verifies an evidence item against the source document pages or supplied context map.
+   * If a citation refers to a non-existent page or quotes text not present in the allowed text,
    * the evidence is downgraded to UNCERTAIN and warnings are collected.
    */
   validateEvidence(
@@ -98,7 +151,7 @@ export class AnalysisService {
         isValid = false;
         warnings.push({
           code: 'EVIDENCE_PAGE_NOT_FOUND',
-          message: `Citation refers to page ${citation.pageNumber}, which does not exist in the document.`,
+          message: `Citation refers to page ${citation.pageNumber}, which was not provided in the analysis context.`,
           pageNumber: citation.pageNumber,
           severity: 'WARNING',
         });
@@ -126,7 +179,7 @@ export class AnalysisService {
           : citation.sourceText;
         warnings.push({
           code: 'EVIDENCE_QUOTE_NOT_FOUND',
-          message: `Evidence quote not found on page ${citation.pageNumber}: "${excerpt}".`,
+          message: `Evidence quote not found in context for page ${citation.pageNumber}: "${excerpt}".`,
           pageNumber: citation.pageNumber,
           severity: 'WARNING',
         });
@@ -147,16 +200,21 @@ export class AnalysisService {
   }
 
   /**
-   * Validates the complete AnalysisResult against actual document pages.
+   * Validates the complete AnalysisResult against actual document pages or supplied context map.
    * Ensures no fabricated evidence passes through as VERIFIED.
    */
   validateResult(
     result: AnalysisResult,
-    pages: DocumentPageRecord[]
+    pagesOrMap: DocumentPageRecord[] | Map<number, string>
   ): AnalysisResult {
-    const pageMap = new Map<number, string>();
-    for (const page of pages) {
-      pageMap.set(page.pageNumber, page.textContent);
+    let pageMap: Map<number, string>;
+    if (pagesOrMap instanceof Map) {
+      pageMap = pagesOrMap;
+    } else {
+      pageMap = new Map<number, string>();
+      for (const page of pagesOrMap) {
+        pageMap.set(page.pageNumber, page.textContent);
+      }
     }
 
     const warnings: AnalysisWarning[] = [...(result.warnings || [])];
@@ -203,17 +261,137 @@ export class AnalysisService {
   }
 
   /**
+   * Performs retrieval-augmented analysis on a document:
+   * 1. Fetches document metadata
+   * 2. Executes HybridRetrievalService query
+   * 3. Builds bounded evidence context via ContextBuilder
+   * 4. Invokes AIProvider with bounded context (no raw unbounded document text)
+   * 5. Validates evidence against the supplied context chunks
+   * 6. Persists versioned result
+   */
+  async analyzeWithRetrieval(
+    documentId: string,
+    query: string,
+    options?: AnalyzeDocumentOptions
+  ): Promise<AnalyzeDocumentResult> {
+    if (!this.documentRepo) {
+      throw new Error('AnalysisService requires documentRepo for analyzeWithRetrieval');
+    }
+    if (!this.hybridRetrievalService) {
+      throw new Error('AnalysisService requires hybridRetrievalService for retrieval-augmented analysis');
+    }
+
+    const document = await this.documentRepo.findById(documentId);
+    if (!document) {
+      throw new Error(`Document not found: ${documentId}`);
+    }
+
+    const trimmedQuery = query?.trim() ?? '';
+    if (!trimmedQuery) {
+      throw new Error('Retrieval-augmented analysis requires a non-empty query');
+    }
+
+    // 1. Execute retrieval
+    let retrievalResult: HybridRetrievalResult;
+    try {
+      retrievalResult = await this.hybridRetrievalService.retrieve(trimmedQuery, {
+        documentId,
+        limit: options?.budget?.maxChunks ?? 20,
+        minVectorScore: options?.minVectorScore,
+      });
+    } catch (err) {
+      throw new Error(
+        `Retrieval infrastructure failure during analysis: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+
+    // 2. Build bounded context
+    const context = this.contextBuilder.buildContext(
+      retrievalResult.candidates,
+      options?.budget,
+      document.name
+    );
+
+    // 3. Prepare bounded request
+    const request = this.prepareBoundedRequest(document, context, {
+      ...options,
+      query: trimmedQuery,
+    });
+
+    // 4. Invoke AI provider
+    const provider = this.getProvider();
+    const rawResult = await provider.analyze(request);
+
+    // 5. Annotate warnings from retrieval diagnostics if degraded or empty
+    if (retrievalResult.diagnostics.isDegraded) {
+      rawResult.warnings.push({
+        code: 'RETRIEVAL_DEGRADED',
+        message: `Vector retrieval degraded: ${retrievalResult.diagnostics.degradedReason ?? 'Local model unavailable'}. Grounded in lexical retrieval.`,
+        severity: 'WARNING',
+      });
+    }
+
+    if (retrievalResult.candidates.length === 0) {
+      rawResult.warnings.push({
+        code: 'NO_RETRIEVAL_CANDIDATES',
+        message: `No retrieval candidates matched the query: "${trimmedQuery}". Analysis contains no document grounding.`,
+        severity: 'WARNING',
+      });
+    }
+
+    // 6. Validate evidence strictly against the supplied context text
+    const validatedResult = this.validateResult(rawResult, context.pageContextMap);
+
+    // 7. Persist analysis
+    let savedRecord: DocumentAnalysisRecord | undefined;
+    if (this.analysisRepo) {
+      const nextVersion = await this.analysisRepo.getNextVersionNumber(documentId);
+      const analysisId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `analysis-${documentId}-v${nextVersion}-${Date.now()}`;
+
+      savedRecord = await this.analysisRepo.saveAnalysis({
+        id: analysisId,
+        documentId,
+        version: nextVersion,
+        isActive: 1,
+        status: 'completed',
+        provider: validatedResult.provider,
+        model: validatedResult.model,
+        documentType: validatedResult.documentType,
+        summary: validatedResult.summary,
+        rawResult: JSON.stringify(validatedResult),
+        promptTokens: validatedResult.usage?.promptTokens,
+        completionTokens: validatedResult.usage?.completionTokens,
+        totalTokens: validatedResult.usage?.totalTokens,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return {
+      result: validatedResult,
+      record: savedRecord,
+      context,
+    };
+  }
+
+  /**
    * End-to-end document analysis:
-   * 1. Fetches document & pages
-   * 2. Prepares request
-   * 3. Invokes AI provider
-   * 4. Validates evidence
-   * 5. Persists versioned result
+   * Distinguishes between targeted retrieval analysis (when query is specified or mode = 'retrieval')
+   * and full-document summary analysis (existing default flow).
    */
   async analyzeDocument(
     documentId: string,
     options?: AnalyzeDocumentOptions
-  ): Promise<{ result: AnalysisResult; record?: DocumentAnalysisRecord }> {
+  ): Promise<AnalyzeDocumentResult> {
+    if (options?.query || options?.mode === 'retrieval') {
+      const query = options?.query?.trim() || '';
+      return this.analyzeWithRetrieval(documentId, query, options);
+    }
+
+    // Full-document summary mode (preserves existing architecture)
     if (!this.documentRepo || !this.pageRepo) {
       throw new Error('AnalysisService requires documentRepo and pageRepo for analyzeDocument');
     }

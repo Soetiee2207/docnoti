@@ -8,10 +8,12 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useDocuments } from "@/hooks/useDocuments"
 import type { DocumentRecord } from "@/db/schema"
+import { DocumentDetailView } from "./DocumentDetailView"
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B"
@@ -100,6 +102,7 @@ export function DocumentsView({
 
   const [filterText, setFilterText] = useState(searchQuery)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
 
   const filteredDocs = useMemo(() => {
     if (!filterText.trim()) return documents
@@ -126,6 +129,16 @@ export function DocumentsView({
 
     const paths = files.map((f) => (f as unknown as { path?: string }).path || f.name)
     await importFilePaths(paths)
+  }
+
+  // If a document is currently selected for targeted view & analysis
+  if (selectedDocId) {
+    return (
+      <DocumentDetailView
+        documentId={selectedDocId}
+        onBack={() => setSelectedDocId(null)}
+      />
+    )
   }
 
   return (
@@ -221,15 +234,20 @@ export function DocumentsView({
                 <th className="px-3 py-2.5 font-medium">Trạng thái</th>
                 <th className="px-3 py-2.5 font-medium">Nhiệm vụ trích xuất</th>
                 <th className="px-4 py-2.5 text-right font-medium">Ngày nhập</th>
+                <th className="px-3 py-2.5 text-right font-medium">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filteredDocs.map((doc: DocumentRecord) => (
-                <tr key={doc.id} className="transition-colors hover:bg-muted/30">
+                <tr
+                  key={doc.id}
+                  onClick={() => setSelectedDocId(doc.id)}
+                  className="transition-colors hover:bg-muted/30 cursor-pointer"
+                >
                   <td className="px-4 py-2.5 font-medium text-foreground">
                     <div className="flex items-center gap-2">
                       <FileText className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="max-w-[280px] truncate" title={doc.name}>
+                      <span className="max-w-[240px] truncate" title={doc.name}>
                         {doc.name}
                       </span>
                     </div>
@@ -258,6 +276,20 @@ export function DocumentsView({
                   </td>
                   <td className="px-4 py-2.5 text-right text-muted-foreground">
                     {formatDate(doc.createdAt)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedDocId(doc.id)
+                      }}
+                      className="gap-1 text-[11px] h-6"
+                    >
+                      <Sparkles className="size-2.5 text-primary" />
+                      <span>Xem & Hỏi đáp</span>
+                    </Button>
                   </td>
                 </tr>
               ))}

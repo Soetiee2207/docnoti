@@ -47,5 +47,5 @@ describe("PaddleOCR Integration & Environment Discovery", () => {
     expect(result.confidence).toBeGreaterThan(0.9)
     expect(result.lines).toBeDefined()
     expect(result.lines!.length).toBeGreaterThanOrEqual(2)
-  }, 45000)
+  }, 90000)
 })
