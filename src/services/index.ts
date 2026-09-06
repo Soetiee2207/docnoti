@@ -22,8 +22,13 @@ import {
 import {
   type AIProvider,
   MockAIProvider,
+  OpenAIProvider,
   AnalysisService,
 } from "./ai"
+import {
+  type SecretsService,
+  InMemorySecretsService,
+} from "./secrets"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -38,6 +43,7 @@ export interface AppServices {
   jobRepo: ProcessingJobRepository
   pageRepo: DocumentPageRepository
   analysisRepo: AnalysisRepository
+  secretsService: SecretsService
   storageService: StorageService
   pdfProcessor: PDFProcessor
   ocrProvider: OCRProvider
@@ -46,8 +52,11 @@ export interface AppServices {
   ingestionService: DocumentIngestionService
   documentWorker: DocumentWorker
   aiProvider: AIProvider
+  mockAiProvider: MockAIProvider
+  openAiProvider: OpenAIProvider
   analysisService: AnalysisService
 }
+
 
 
 let servicesInstance: AppServices | null = null
@@ -78,7 +87,12 @@ export async function getAppServices(): Promise<AppServices> {
       const ocrProvider = new PaddleOCRProvider()
       const ocrService = new OCRService(ocrProvider, pageRenderer)
 
-      const aiProvider = new MockAIProvider()
+      const secretsService: SecretsService = new InMemorySecretsService()
+      const mockAiProvider = new MockAIProvider()
+      const openAiProvider = new OpenAIProvider(secretsService)
+      // Default to mockAiProvider for local/offline execution; user opt-in will swap to openAiProvider
+      const aiProvider: AIProvider = mockAiProvider
+
       const analysisService = new AnalysisService({
         aiProvider,
         analysisRepo,
@@ -107,6 +121,7 @@ export async function getAppServices(): Promise<AppServices> {
         jobRepo,
         pageRepo,
         analysisRepo,
+        secretsService,
         storageService,
         pdfProcessor,
         ocrProvider,
@@ -115,6 +130,8 @@ export async function getAppServices(): Promise<AppServices> {
         ingestionService,
         documentWorker,
         aiProvider,
+        mockAiProvider,
+        openAiProvider,
         analysisService,
       }
 
@@ -133,4 +150,6 @@ export function resetAppServices(): void {
 }
 
 export * from "./ai"
+export * from "./secrets"
+
 
