@@ -1,29 +1,35 @@
-# Dependencies
-node_modules/
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Environment
-.env
-.env.*
-!.env.example
+node_modules
+dist
+dist-ssr
+*.local
 
-# Runtime data
+# Runtime / Local data
 data/*
 !data/.gitkeep
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+app_data/
+documents/
 
-# Build
-dist/
-build/
-out/
 
-# Test / coverage
-coverage/
-
-# Logs
-*.log
-
-# OS
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
 .DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
