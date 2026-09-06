@@ -42,6 +42,26 @@ export const documentPages = sqliteTable("document_pages", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const documentAnalyses = sqliteTable("document_analyses", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  version: integer("version").notNull().default(1),
+  isActive: integer("is_active").notNull().default(1),
+  status: text("status").notNull().default("completed"),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  documentType: text("document_type").notNull(),
+  summary: text("summary").notNull(),
+  rawResult: text("raw_result").notNull(),
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  totalTokens: integer("total_tokens"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export type DocumentRecord = typeof documents.$inferSelect
 export type NewDocumentRecord = typeof documents.$inferInsert
 
@@ -50,3 +70,7 @@ export type NewProcessingJobRecord = typeof processingJobs.$inferInsert
 
 export type DocumentPageRecord = typeof documentPages.$inferSelect
 export type NewDocumentPageRecord = typeof documentPages.$inferInsert
+
+export type DocumentAnalysisRecord = typeof documentAnalyses.$inferSelect
+export type NewDocumentAnalysisRecord = typeof documentAnalyses.$inferInsert
+

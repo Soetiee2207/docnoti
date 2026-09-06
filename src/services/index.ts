@@ -2,6 +2,7 @@ import { initDb, type AppDatabase } from "@/db/client"
 import { DocumentRepository } from "@/repositories/documentRepository"
 import { ProcessingJobRepository } from "@/repositories/processingJobRepository"
 import { DocumentPageRepository } from "@/repositories/documentPageRepository"
+import { AnalysisRepository } from "@/repositories/analysisRepository"
 import {
   TauriStorageService,
   InMemoryStorageService,
@@ -18,6 +19,11 @@ import {
   type OCRProvider,
   type PageRenderer,
 } from "./ocr"
+import {
+  type AIProvider,
+  MockAIProvider,
+  AnalysisService,
+} from "./ai"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -31,6 +37,7 @@ export interface AppServices {
   documentRepo: DocumentRepository
   jobRepo: ProcessingJobRepository
   pageRepo: DocumentPageRepository
+  analysisRepo: AnalysisRepository
   storageService: StorageService
   pdfProcessor: PDFProcessor
   ocrProvider: OCRProvider
@@ -38,7 +45,10 @@ export interface AppServices {
   ocrService: OCRService
   ingestionService: DocumentIngestionService
   documentWorker: DocumentWorker
+  aiProvider: AIProvider
+  analysisService: AnalysisService
 }
+
 
 let servicesInstance: AppServices | null = null
 let servicesPromise: Promise<AppServices> | null = null
@@ -58,6 +68,7 @@ export async function getAppServices(): Promise<AppServices> {
       const documentRepo = new DocumentRepository(db)
       const jobRepo = new ProcessingJobRepository(db)
       const pageRepo = new DocumentPageRepository(db)
+      const analysisRepo = new AnalysisRepository(db)
       const storageService: StorageService = isTauriEnvironment()
         ? new TauriStorageService()
         : new InMemoryStorageService()
@@ -66,6 +77,14 @@ export async function getAppServices(): Promise<AppServices> {
       const pageRenderer = new CanvasPageRenderer(2.0)
       const ocrProvider = new PaddleOCRProvider()
       const ocrService = new OCRService(ocrProvider, pageRenderer)
+
+      const aiProvider = new MockAIProvider()
+      const analysisService = new AnalysisService({
+        aiProvider,
+        analysisRepo,
+        documentRepo,
+        pageRepo,
+      })
 
       const ingestionService = new DocumentIngestionService(
         documentRepo,
@@ -87,6 +106,7 @@ export async function getAppServices(): Promise<AppServices> {
         documentRepo,
         jobRepo,
         pageRepo,
+        analysisRepo,
         storageService,
         pdfProcessor,
         ocrProvider,
@@ -94,6 +114,8 @@ export async function getAppServices(): Promise<AppServices> {
         ocrService,
         ingestionService,
         documentWorker,
+        aiProvider,
+        analysisService,
       }
 
       return servicesInstance
@@ -109,3 +131,6 @@ export function resetAppServices(): void {
   servicesInstance = null
   servicesPromise = null
 }
+
+export * from "./ai"
+
