@@ -20,7 +20,7 @@ data/*
 *.db-shm
 *.sqlite*
 app_data/
-documents/
+/documents/
 
 
 # Editor directories and files

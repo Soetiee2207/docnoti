@@ -46,7 +46,8 @@ pub fn run() {
             db::db_execute,
             db::db_query,
             storage::import_pdf_file,
-            storage::delete_stored_file
+            storage::delete_stored_file,
+            storage::read_stored_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

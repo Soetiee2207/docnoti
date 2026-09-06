@@ -29,8 +29,24 @@ export const processingJobs = sqliteTable("processing_jobs", {
   completedAt: text("completed_at"),
 })
 
+export const documentPages = sqliteTable("document_pages", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  pageNumber: integer("page_number").notNull(),
+  textContent: text("text_content").notNull(),
+  charCount: integer("char_count").notNull(),
+  hasSufficientText: integer("has_sufficient_text").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export type DocumentRecord = typeof documents.$inferSelect
 export type NewDocumentRecord = typeof documents.$inferInsert
 
 export type ProcessingJobRecord = typeof processingJobs.$inferSelect
 export type NewProcessingJobRecord = typeof processingJobs.$inferInsert
+
+export type DocumentPageRecord = typeof documentPages.$inferSelect
+export type NewDocumentPageRecord = typeof documentPages.$inferInsert

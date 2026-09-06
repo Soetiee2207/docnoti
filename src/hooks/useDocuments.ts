@@ -15,6 +15,7 @@ export function useDocuments() {
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState<boolean>(false)
+  const [processing, setProcessing] = useState<boolean>(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -31,11 +32,27 @@ export function useDocuments() {
     }
   }, [])
 
+  const processPendingJobs = useCallback(async () => {
+    setProcessing(true)
+    try {
+      const services = await getAppServices()
+      await services.documentWorker.processPendingJobs()
+      await refresh()
+    } catch (err) {
+      console.error("Background processing error:", err)
+    } finally {
+      setProcessing(false)
+    }
+  }, [refresh])
+
   useEffect(() => {
     queueMicrotask(() => {
-      void refresh()
+      void refresh().then(() => {
+        // Automatically process any pending jobs on startup
+        void processPendingJobs()
+      })
     })
-  }, [refresh])
+  }, [refresh, processPendingJobs])
 
   const importFilePaths = useCallback(
     async (paths: string[]): Promise<{ succeeded: number; failed: number; message?: string }> => {
@@ -48,6 +65,15 @@ export function useDocuments() {
         const result = await services.ingestionService.ingestMultiple(paths)
 
         await refresh()
+
+        // Trigger worker processing for imported documents
+        if (result.succeeded.length > 0) {
+          setProcessing(true)
+          services.documentWorker
+            .processPendingJobs()
+            .then(() => refresh())
+            .finally(() => setProcessing(false))
+        }
 
         let message: string | undefined
         if (result.failed.length > 0) {
@@ -115,7 +141,9 @@ export function useDocuments() {
     loading,
     error,
     importing,
+    processing,
     refresh,
+    processPendingJobs,
     importFilePaths,
     openPickerAndImport,
   }

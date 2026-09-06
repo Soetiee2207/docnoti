@@ -36,6 +36,22 @@ CREATE INDEX IF NOT EXISTS idx_processing_jobs_document_id ON processing_jobs(do
 CREATE INDEX IF NOT EXISTS idx_processing_jobs_status ON processing_jobs(status);
 `
 
+export const DOCUMENT_PAGES_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS document_pages (
+  id TEXT PRIMARY KEY NOT NULL,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  page_number INTEGER NOT NULL,
+  text_content TEXT NOT NULL,
+  char_count INTEGER NOT NULL,
+  has_sufficient_text INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_pages_document_id ON document_pages(document_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_document_pages_doc_page ON document_pages(document_id, page_number);
+`
+
 interface MigrationItem {
   id: string
   sql: string
@@ -45,6 +61,10 @@ const MIGRATIONS: MigrationItem[] = [
   {
     id: "0000_initial",
     sql: INITIAL_MIGRATION_SQL,
+  },
+  {
+    id: "0001_document_pages",
+    sql: DOCUMENT_PAGES_MIGRATION_SQL,
   },
 ]
 
@@ -78,7 +98,7 @@ export async function runMigrations(executor: MigrationExecutor): Promise<void> 
 
       const now = new Date().toISOString()
       await executor.execute(
-        `INSERT INTO __drizzle_migrations (name, applied_at) VALUES ('${migration.id}', '${now}');`
+        `INSERT OR IGNORE INTO __drizzle_migrations (name, applied_at) VALUES ('${migration.id}', '${now}');`
       )
     }
   }

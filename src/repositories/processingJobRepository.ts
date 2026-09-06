@@ -56,4 +56,71 @@ export class ProcessingJobRepository {
       .where(eq(processingJobs.id, id))
       .run()
   }
+
+  /**
+   * Concurrency-safe job claim: only claims if job status is 'pending'
+   */
+  async claimJob(id: string): Promise<ProcessingJobRecord | null> {
+    const job = await this.findById(id)
+    if (!job || job.status !== "pending") {
+      return null
+    }
+
+    const now = new Date().toISOString()
+    await this.db
+      .update(processingJobs)
+      .set({
+        status: "processing",
+        startedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(processingJobs.id, id))
+      .run()
+
+    return this.findById(id)
+  }
+
+  /**
+   * Bounded retry logic: increments retryCount and transitions to 'pending' or 'failed'
+   */
+  async failOrRetry(
+    id: string,
+    errorMessage: string
+  ): Promise<{ retrying: boolean; status: string }> {
+    const job = await this.findById(id)
+    if (!job) {
+      throw new Error(`Job not found: ${id}`)
+    }
+
+    const nextRetry = job.retryCount + 1
+    const now = new Date().toISOString()
+
+    if (nextRetry < job.maxRetries) {
+      await this.db
+        .update(processingJobs)
+        .set({
+          status: "pending",
+          retryCount: nextRetry,
+          errorMessage,
+          updatedAt: now,
+        })
+        .where(eq(processingJobs.id, id))
+        .run()
+      return { retrying: true, status: "pending" }
+    } else {
+      await this.db
+        .update(processingJobs)
+        .set({
+          status: "failed",
+          retryCount: nextRetry,
+          errorMessage,
+          updatedAt: now,
+          completedAt: now,
+        })
+        .where(eq(processingJobs.id, id))
+        .run()
+      return { retrying: false, status: "failed" }
+    }
+  }
 }
+

@@ -12,6 +12,7 @@ export interface StoredFileInfo {
 export interface StorageService {
   importPdf(sourcePath: string): Promise<StoredFileInfo>
   deleteStoredFile(storagePath: string): Promise<void>
+  readFile(storagePath: string): Promise<Uint8Array>
 }
 
 export class TauriStorageService implements StorageService {
@@ -25,6 +26,11 @@ export class TauriStorageService implements StorageService {
   async deleteStoredFile(storagePath: string): Promise<void> {
     await invoke("delete_stored_file", { storagePath })
   }
+
+  async readFile(storagePath: string): Promise<Uint8Array> {
+    const bytes = await invoke<number[]>("read_stored_file", { storagePath })
+    return new Uint8Array(bytes)
+  }
 }
 
 /**
@@ -32,6 +38,7 @@ export class TauriStorageService implements StorageService {
  */
 export class InMemoryStorageService implements StorageService {
   private files = new Map<string, StoredFileInfo>()
+  private fileBuffers = new Map<string, Uint8Array>()
   public shouldFailImport = false
 
   async importPdf(sourcePath: string): Promise<StoredFileInfo> {
@@ -64,6 +71,19 @@ export class InMemoryStorageService implements StorageService {
 
   async deleteStoredFile(storagePath: string): Promise<void> {
     this.files.delete(storagePath)
+    this.fileBuffers.delete(storagePath)
+  }
+
+  setFileBuffer(storagePath: string, buffer: Uint8Array): void {
+    this.fileBuffers.set(storagePath, buffer)
+  }
+
+  async readFile(storagePath: string): Promise<Uint8Array> {
+    const buffer = this.fileBuffers.get(storagePath)
+    if (!buffer) {
+      throw new Error(`File not found in storage: ${storagePath}`)
+    }
+    return buffer
   }
 
   hasFile(storagePath: string): boolean {

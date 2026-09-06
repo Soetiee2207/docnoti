@@ -11,6 +11,7 @@ function isTauriEnvironment(): boolean {
 
 let dbInstance: AppDatabase | null = null
 let isInitialized = false
+let initPromise: Promise<AppDatabase> | null = null
 
 export function createTauriDrizzleDb(): AppDatabase {
   return drizzle(
@@ -60,36 +61,45 @@ export async function initDb(customDb?: AppDatabase): Promise<AppDatabase> {
     return dbInstance
   }
 
-  if (isTauriEnvironment()) {
-    dbInstance = createTauriDrizzleDb()
-
-    const executor: MigrationExecutor = {
-      async execute(sql: string) {
-        await invoke("db_execute", { sql, params: [] })
-      },
-      async query<T = unknown>(sql: string): Promise<T[]> {
-        // Run migration query returning array of rows
-        const rows = await invoke<unknown[][]>("db_query", { sql, params: [] })
-        // If select column, map to object { name: row[0] }
-        return rows.map((r) => ({ name: r[0] })) as T[]
-      },
-    }
-
-    await runMigrations(executor)
-  } else {
-    // In-memory web / dev fallback when running in pure browser without Tauri
-    dbInstance = drizzle(
-      async (_sql: string, _params: unknown[], method: "run" | "all" | "values" | "get") => {
-        console.warn("Running in Web fallback mode without native Tauri SQLite.")
-        if (method === "run") return { rows: [] }
-        return { rows: [] }
-      },
-      { schema }
-    )
+  if (initPromise) {
+    return initPromise
   }
 
-  isInitialized = true
-  return dbInstance
+  initPromise = (async () => {
+    try {
+      if (isTauriEnvironment()) {
+        dbInstance = createTauriDrizzleDb()
+
+        const executor: MigrationExecutor = {
+          async execute(sql: string) {
+            await invoke("db_execute", { sql, params: [] })
+          },
+          async query<T = unknown>(sql: string): Promise<T[]> {
+            const rows = await invoke<unknown[][]>("db_query", { sql, params: [] })
+            return rows.map((r) => ({ name: r[0] })) as T[]
+          },
+        }
+
+        await runMigrations(executor)
+      } else {
+        dbInstance = drizzle(
+          async (_sql: string, _params: unknown[], method: "run" | "all" | "values" | "get") => {
+            console.warn("Running in Web fallback mode without native Tauri SQLite.")
+            if (method === "run") return { rows: [] }
+            return { rows: [] }
+          },
+          { schema }
+        )
+      }
+
+      isInitialized = true
+      return dbInstance
+    } finally {
+      initPromise = null
+    }
+  })()
+
+  return initPromise
 }
 
 export function getDb(): AppDatabase {

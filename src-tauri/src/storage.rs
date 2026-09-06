@@ -134,3 +134,21 @@ pub fn delete_stored_file(app: AppHandle, storage_path: String) -> Result<(), St
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn read_stored_file(app: AppHandle, storage_path: String) -> Result<Vec<u8>, String> {
+    let storage_dir = get_storage_dir(&app)?;
+    let target_path = Path::new(&storage_path);
+
+    // Security guard: ensure target is strictly inside managed storage directory
+    if !target_path.starts_with(&storage_dir) {
+        return Err("Security violation: target path is not within managed storage".to_string());
+    }
+
+    if !target_path.exists() {
+        return Err(format!("Stored file does not exist: {}", target_path.display()));
+    }
+
+    fs::read(target_path).map_err(|e| format!("Failed to read stored file {}: {e}", target_path.display()))
+}
+
