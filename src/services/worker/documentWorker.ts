@@ -35,6 +35,7 @@ export class DocumentWorker {
   private taskExtractionService?: TaskExtractionService
   private autoAnalyze: boolean = false
   private isRunning = false
+  private backgroundTimer: NodeJS.Timeout | null = null
 
   constructor(
     documentRepo: DocumentRepository,
@@ -510,5 +511,36 @@ export class DocumentWorker {
     }
 
     return results
+  }
+
+  /**
+   * Starts periodic background polling for pending jobs
+   */
+  startBackground(intervalMs = 30000): void {
+    if (this.backgroundTimer) return
+
+    // Run immediate check
+    void this.processPendingJobs()
+
+    this.backgroundTimer = setInterval(() => {
+      void this.processPendingJobs()
+    }, intervalMs)
+  }
+
+  /**
+   * Stops periodic background polling
+   */
+  stopBackground(): void {
+    if (this.backgroundTimer) {
+      clearInterval(this.backgroundTimer)
+      this.backgroundTimer = null
+    }
+  }
+
+  /**
+   * Checks whether background polling is active
+   */
+  isBackgroundRunning(): boolean {
+    return this.backgroundTimer !== null
   }
 }

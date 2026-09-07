@@ -1,8 +1,71 @@
-import { Folder, HardDrive, Cpu, Bell } from "lucide-react"
+import { Folder, HardDrive, Cpu, Bell, Power } from "lucide-react"
+import { useAutostart } from "@/hooks/useAutostart"
 
 export function SettingsView() {
+  const { autostartEnabled, daemonStatus, loading, error, setAutostart } = useAutostart()
+
   return (
     <div className="max-w-3xl space-y-6">
+      {/* Windows Autostart & Background Daemon */}
+      <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+              <Power className="size-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-card-foreground">Khởi động cùng Windows & Chạy ngầm</h2>
+              <p className="text-xs text-muted-foreground">Tự động khởi động khi đăng nhập Windows và duy trì chạy ngầm</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="autostart-toggle" className="text-xs font-medium text-muted-foreground cursor-pointer">
+              {autostartEnabled ? "Đang bật" : "Đã tắt"}
+            </label>
+            <input
+              id="autostart-toggle"
+              type="checkbox"
+              className="size-4 cursor-pointer accent-primary rounded border-border"
+              checked={autostartEnabled}
+              disabled={loading}
+              onChange={(e) => void setAutostart(e.target.checked)}
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
+            {error}
+          </div>
+        )}
+
+        <div className="rounded-lg border border-border bg-background p-3 text-xs space-y-2">
+          <div className="flex justify-between items-center text-muted-foreground">
+            <span>Trạng thái daemon chạy ngầm:</span>
+            <span className="flex items-center gap-1.5 font-medium text-foreground">
+              <span className={`inline-block size-2 rounded-full ${daemonStatus?.running ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+              {daemonStatus?.running ? "Đang hoạt động" : "Chưa khởi chạy"}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-muted-foreground">
+            <span>Bộ lập lịch nhắc nhở (ReminderScheduler):</span>
+            <span className="text-foreground">
+              {daemonStatus?.schedulerActive ? "Sẵn sàng (Startup Recovery hoàn tất)" : "Dừng"}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-muted-foreground">
+            <span>Xử lý tài liệu ngầm (DocumentWorker):</span>
+            <span className="text-foreground">
+              {daemonStatus?.workerActive ? "Sẵn sàng (Polling active)" : "Chờ việc"}
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Ghi chú: Khi đóng cửa sổ chính (nút X), ứng dụng sẽ tự động thu nhỏ vào khay hệ thống (System Tray) để tiếp tục gửi thông báo và theo dõi nhắc nhở. Nhấp đúp vào biểu tượng khay để mở lại giao diện, hoặc chọn &quot;Thoát docnoti&quot; để dừng hoàn toàn ứng dụng.
+        </p>
+      </div>
+
       {/* Local Storage Section */}
       <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
         <div className="flex items-center gap-3">

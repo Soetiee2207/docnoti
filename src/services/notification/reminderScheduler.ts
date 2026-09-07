@@ -52,6 +52,10 @@ export class ReminderScheduler {
     }
   }
 
+  isRunning(): boolean {
+    return this.timer !== null
+  }
+
   async recoverPendingReminders(): Promise<{ delivered: number; missed: number }> {
     const now = new Date()
     const nowIso = now.toISOString()

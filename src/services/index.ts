@@ -59,6 +59,11 @@ import {
   NotificationService,
   ReminderScheduler,
 } from "./notification"
+import { AppSettingsRepository } from "@/repositories/appSettingsRepository"
+import {
+  AutostartService,
+  AppLifecycleService,
+} from "./lifecycle"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -106,6 +111,9 @@ export interface AppServices {
   windowsToastProvider: WindowsToastNotificationProvider
   notificationService: NotificationService
   reminderScheduler: ReminderScheduler
+  appSettingsRepo: AppSettingsRepository
+  autostartService: AutostartService
+  appLifecycleService: AppLifecycleService
 }
 
 
@@ -224,6 +232,14 @@ export async function getAppServices(): Promise<AppServices> {
         taskExtractionService
       )
 
+      const appSettingsRepo = new AppSettingsRepository(db)
+      const autostartService = new AutostartService(appSettingsRepo)
+      const appLifecycleService = new AppLifecycleService(
+        autostartService,
+        reminderScheduler,
+        documentWorker
+      )
+
       servicesInstance = {
         db,
         documentRepo,
@@ -263,6 +279,9 @@ export async function getAppServices(): Promise<AppServices> {
         windowsToastProvider,
         notificationService,
         reminderScheduler,
+        appSettingsRepo,
+        autostartService,
+        appLifecycleService,
       }
 
       return servicesInstance
@@ -288,6 +307,7 @@ export * from "./retrieval"
 export * from "./tasks"
 export * from "./calendar"
 export * from "./notification"
+export * from "./lifecycle"
 
 
 

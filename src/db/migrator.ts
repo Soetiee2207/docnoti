@@ -232,6 +232,14 @@ CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status);
 CREATE INDEX IF NOT EXISTS idx_reminders_scheduled_at ON reminders(scheduled_at);
 `
 
+export const APP_SETTINGS_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`
+
 interface MigrationItem {
   id: string
   sql: string
@@ -273,6 +281,10 @@ const MIGRATIONS: MigrationItem[] = [
   {
     id: "0008_reminders",
     sql: REMINDERS_MIGRATION_SQL,
+  },
+  {
+    id: "0009_app_settings",
+    sql: APP_SETTINGS_MIGRATION_SQL,
   },
 ]
 

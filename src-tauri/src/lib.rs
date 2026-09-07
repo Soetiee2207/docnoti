@@ -1,11 +1,13 @@
 mod db;
 mod storage;
 mod ocr;
+mod autostart;
+mod tray;
 
 use rusqlite::Connection;
 use std::fs;
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +20,20 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            // Set up system tray
+            if let Err(err) = tray::setup_tray(app.handle()) {
+                eprintln!("Failed to initialize system tray: {err}");
+            }
+
+            // Check if launched with --background or --minimized flag
+            let args: Vec<String> = std::env::args().collect();
+            let start_in_background = args.iter().any(|arg| arg == "--background" || arg == "--minimized");
+            if start_in_background {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
             }
 
             let base_dir = app
@@ -43,6 +59,13 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                // Prevent application exit on window close; hide to system tray instead.
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             db::db_execute,
             db::db_query,
@@ -50,7 +73,9 @@ pub fn run() {
             storage::delete_stored_file,
             storage::read_stored_file,
             ocr::check_ocr_available,
-            ocr::run_ocr_on_image
+            ocr::run_ocr_on_image,
+            autostart::get_autostart_status,
+            autostart::set_autostart_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

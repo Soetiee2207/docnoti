@@ -187,3 +187,12 @@ export const reminders = sqliteTable("reminders", {
 
 export type ReminderRecord = typeof reminders.$inferSelect
 export type NewReminderRecord = typeof reminders.$inferInsert
+
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export type AppSettingRecord = typeof appSettings.$inferSelect
+export type NewAppSettingRecord = typeof appSettings.$inferInsert
