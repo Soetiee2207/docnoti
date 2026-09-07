@@ -105,7 +105,7 @@ describe('P5.1 AI Analysis Foundation', () => {
       });
 
       expect(result.documentId).toBe('doc-123');
-      expect(result.documentType).toBe('INVOICE');
+      expect(result.documentType).toBe('REPORT');
       expect(result.summary).toContain('contract.pdf');
       expect(result.provider).toBe('mock-ai-provider');
       expect(result.evidences.length).toBeGreaterThan(0);

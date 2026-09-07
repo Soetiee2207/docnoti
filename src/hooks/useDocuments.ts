@@ -136,6 +136,28 @@ export function useDocuments() {
     }
   }, [importFilePaths])
 
+  const reprocessDocument = useCallback(
+    async (documentId: string): Promise<void> => {
+      try {
+        setError(null)
+        setProcessing(true)
+        const services = await getAppServices()
+        await services.documentWorker.reprocessDocument(documentId)
+        await refresh()
+        // Run worker processing immediately
+        services.documentWorker
+          .processPendingJobs()
+          .then(() => refresh())
+          .finally(() => setProcessing(false))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        setError(msg)
+        setProcessing(false)
+      }
+    },
+    [refresh]
+  )
+
   return {
     documents,
     loading,
@@ -143,8 +165,10 @@ export function useDocuments() {
     importing,
     processing,
     refresh,
+    reprocessDocument,
     processPendingJobs,
     importFilePaths,
     openPickerAndImport,
   }
 }
+

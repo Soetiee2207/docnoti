@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getAppServices } from "@/services"
 import type { DocumentRecord, DocumentPageRecord } from "@/db/schema"
-import type { AnalysisResult, BuiltContext } from "@/services/ai"
+import type { AnalysisResult, BuiltContext, QaHistoryItem } from "@/services/ai"
 
 export interface UseDocumentAnalysisResult {
   document: DocumentRecord | null
@@ -17,11 +17,15 @@ export interface UseDocumentAnalysisResult {
   qaContext: BuiltContext | null
   isDegraded: boolean
   noCandidates: boolean
+  qaHistory: QaHistoryItem[]
+  clearQaHistory: () => void
   askQuestion: (customQuestion?: string) => Promise<void>
   fullSummary: AnalysisResult | null
   loadingSummary: boolean
   loadFullSummary: () => Promise<void>
   reloadDocument: () => Promise<void>
+  reprocessDocument: () => Promise<void>
+  reprocessing: boolean
 }
 
 export function useDocumentAnalysis(documentId: string): UseDocumentAnalysisResult {
@@ -37,9 +41,11 @@ export function useDocumentAnalysis(documentId: string): UseDocumentAnalysisResu
   const [qaContext, setQaContext] = useState<BuiltContext | null>(null)
   const [isDegraded, setIsDegraded] = useState<boolean>(false)
   const [noCandidates, setNoCandidates] = useState<boolean>(false)
+  const [qaHistory, setQaHistory] = useState<QaHistoryItem[]>([])
 
   const [fullSummary, setFullSummary] = useState<AnalysisResult | null>(null)
   const [loadingSummary, setLoadingSummary] = useState<boolean>(false)
+  const [reprocessing, setReprocessing] = useState<boolean>(false)
 
   const reloadDocument = useCallback(async () => {
     if (!documentId) return
@@ -113,6 +119,18 @@ export function useDocumentAnalysis(documentId: string): UseDocumentAnalysisResu
         const empty = result.warnings.some((w) => w.code === "NO_RETRIEVAL_CANDIDATES")
         setIsDegraded(degraded)
         setNoCandidates(empty)
+
+        const historyItem: QaHistoryItem = {
+          id: crypto.randomUUID(),
+          question: q,
+          result,
+          context: context ?? null,
+          isDegraded: degraded,
+          noCandidates: empty,
+          timestamp: Date.now(),
+        }
+        setQaHistory((prev) => [...prev, historyItem])
+        setQuestion("")
       } catch (err) {
         console.error("Retrieval analysis error:", err)
         setError(
@@ -164,6 +182,28 @@ export function useDocumentAnalysis(documentId: string): UseDocumentAnalysisResu
     }
   }, [documentId, loadingSummary])
 
+  const reprocessDocument = useCallback(async () => {
+    if (!documentId) return
+    try {
+      setReprocessing(true)
+      setError(null)
+      const services = await getAppServices()
+      await services.documentWorker.reprocessDocument(documentId)
+      await services.documentWorker.processPendingJobs()
+      await reloadDocument()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setReprocessing(false)
+    }
+  }, [documentId, reloadDocument])
+
+  const clearQaHistory = useCallback(() => {
+    setQaHistory([])
+    setQaResult(null)
+    setQaContext(null)
+  }, [])
+
   return {
     document,
     pages,
@@ -178,10 +218,15 @@ export function useDocumentAnalysis(documentId: string): UseDocumentAnalysisResu
     qaContext,
     isDegraded,
     noCandidates,
+    qaHistory,
+    clearQaHistory,
     askQuestion,
     fullSummary,
     loadingSummary,
     loadFullSummary,
     reloadDocument,
+    reprocessDocument,
+    reprocessing,
   }
 }
+

@@ -186,6 +186,31 @@ export class DocumentWorker {
     })
   }
 
+  /**
+   * Re-enqueues a document_pipeline job for a document, allowing users to reprocess failed documents.
+   */
+  async reprocessDocument(documentId: string): Promise<ProcessingJobRecord> {
+    const document = await this.documentRepo.findById(documentId)
+    if (!document) {
+      throw new Error(`Tài liệu với ID ${documentId} không tồn tại.`)
+    }
+
+    const now = new Date().toISOString()
+    await this.documentRepo.updateStatus(documentId, "processing")
+
+    const jobId = `job-retry-${documentId}-${Date.now()}`
+    return this.jobRepo.create({
+      id: jobId,
+      documentId,
+      jobType: "document_pipeline",
+      status: "pending",
+      retryCount: 0,
+      maxRetries: 3,
+      createdAt: now,
+      updatedAt: now,
+    })
+  }
+
 
   /**
    * Process a specific processing job by ID.

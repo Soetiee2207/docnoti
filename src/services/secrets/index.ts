@@ -1,33 +1,26 @@
-export interface SecretsService {
-  getSecret(key: string): Promise<string | null>;
-  setSecret(key: string, value: string): Promise<void>;
-  deleteSecret(key: string): Promise<void>;
+import type { SecretsService } from './types';
+import { InMemorySecretsService } from './inMemorySecretsService';
+import { WindowsSecretsService } from './windowsSecretsService';
+
+function isTauriEnvironment(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+  );
 }
 
 /**
- * In-memory fallback / testing implementation of SecretsService.
- * Does not persist secrets to disk or database.
+ * Creates the appropriate SecretsService for current environment.
+ * On Tauri Windows: returns WindowsSecretsService backed by Windows Credential Manager.
+ * In Web fallback / testing: returns InMemorySecretsService.
  */
-export class InMemorySecretsService implements SecretsService {
-  private secrets: Map<string, string> = new Map();
-
-  constructor(initialSecrets?: Record<string, string>) {
-    if (initialSecrets) {
-      for (const [key, value] of Object.entries(initialSecrets)) {
-        this.secrets.set(key, value);
-      }
-    }
+export function createDefaultSecretsService(): SecretsService {
+  if (isTauriEnvironment()) {
+    return new WindowsSecretsService();
   }
-
-  async getSecret(key: string): Promise<string | null> {
-    return this.secrets.get(key) ?? null;
-  }
-
-  async setSecret(key: string, value: string): Promise<void> {
-    this.secrets.set(key, value);
-  }
-
-  async deleteSecret(key: string): Promise<void> {
-    this.secrets.delete(key);
-  }
+  return new InMemorySecretsService();
 }
+
+export * from './types';
+export * from './inMemorySecretsService';
+export * from './windowsSecretsService';

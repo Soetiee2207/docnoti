@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowLeft, FileText, Sparkles, FileCheck2, CheckSquare } from "lucide-react"
+import { ArrowLeft, FileText, Sparkles, FileCheck2, CheckSquare, RotateCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DocumentViewer } from "./DocumentViewer"
 import { DocumentAnalysisQaView } from "./DocumentAnalysisQaView"
@@ -40,10 +40,14 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
     qaContext,
     isDegraded,
     noCandidates,
+    qaHistory,
+    clearQaHistory,
     askQuestion,
     fullSummary,
     loadingSummary,
     loadFullSummary,
+    reprocessDocument,
+    reprocessing,
   } = useDocumentAnalysis(documentId)
 
   const {
@@ -63,7 +67,7 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
             variant="outline"
             size="sm"
             onClick={onBack}
-            className="gap-1.5 text-xs h-8"
+            className="gap-1.5 text-xs h-8 cursor-pointer"
           >
             <ArrowLeft className="size-3.5" />
             <span>Danh sách</span>
@@ -79,6 +83,20 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
                 ({formatBytes(document.fileSize)})
               </span>
             </div>
+          )}
+
+          {(document?.status === "failed" || pages.length === 0) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void reprocessDocument()}
+              disabled={reprocessing}
+              className="gap-1.5 text-xs h-8 border-destructive/40 text-destructive hover:bg-destructive/10 cursor-pointer"
+              title="Xử lý lại trích xuất văn bản và OCR cho tài liệu này"
+            >
+              <RotateCw className={`size-3.5 ${reprocessing ? "animate-spin" : ""}`} />
+              <span>{reprocessing ? "Đang xử lý lại..." : "Xử lý lại tài liệu"}</span>
+            </Button>
           )}
         </div>
 
@@ -159,6 +177,8 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
               isDegraded={isDegraded}
               noCandidates={noCandidates}
               onNavigateToPage={setCurrentPage}
+              qaHistory={qaHistory}
+              onClearHistory={clearQaHistory}
             />
           )}
 

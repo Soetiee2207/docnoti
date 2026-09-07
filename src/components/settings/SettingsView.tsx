@@ -1,8 +1,27 @@
-import { Folder, HardDrive, Cpu, Bell, Power } from "lucide-react"
+import { useState } from "react"
+import { Folder, HardDrive, Cpu, Bell, Power, Key, CheckCircle2, RefreshCw } from "lucide-react"
 import { useAutostart } from "@/hooks/useAutostart"
+import { useSecrets } from "@/hooks/useSecrets"
+import { useAiConfig } from "@/hooks/useAiConfig"
 
 export function SettingsView() {
   const { autostartEnabled, daemonStatus, loading, error, setAutostart } = useAutostart()
+  const {
+    isConfigured: isApiKeyConfigured,
+    loading: secretsLoading,
+    error: secretsError,
+    saveApiKey,
+    deleteApiKey,
+  } = useSecrets()
+  const {
+    cloudEnabled,
+    model,
+    testingConnection,
+    testResult,
+    setCloudEnabled,
+    testConnection,
+  } = useAiConfig()
+  const [apiKeyInput, setApiKeyInput] = useState("")
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -117,13 +136,139 @@ export function SettingsView() {
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          <div className="rounded-lg border-2 border-primary bg-primary/5 p-3 space-y-1">
-            <div className="font-semibold text-foreground">Xử lý hoàn toàn Cục bộ (Mặc định)</div>
-            <p className="text-muted-foreground text-[11px]">Không gửi văn bản ra ngoài internet. Bảo mật tối đa dữ liệu người dùng.</p>
+          <button
+            type="button"
+            onClick={() => void setCloudEnabled(false)}
+            className={`text-left rounded-lg p-3 space-y-1 transition-all cursor-pointer ${
+              !cloudEnabled
+                ? "border-2 border-primary bg-primary/5 ring-1 ring-primary/20"
+                : "border border-border bg-background hover:bg-muted/30 opacity-75"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-foreground">Xử lý Cục bộ (Mặc định)</span>
+              {!cloudEnabled && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-primary">
+                  <CheckCircle2 className="size-3" />
+                  Đang dùng
+                </span>
+              )}
+            </div>
+            <p className="text-muted-foreground text-[11px]">
+              Không gửi dữ liệu ra internet. Phù hợp tài liệu bảo mật hoặc khi không có API key.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void setCloudEnabled(true)}
+            className={`text-left rounded-lg p-3 space-y-1 transition-all cursor-pointer ${
+              cloudEnabled
+                ? "border-2 border-primary bg-primary/5 ring-1 ring-primary/20"
+                : "border border-border bg-background hover:bg-muted/30 opacity-75"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-foreground">Cloud AI ({model})</span>
+              {cloudEnabled && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="size-3" />
+                  Đang bật
+                </span>
+              )}
+            </div>
+            <p className="text-muted-foreground text-[11px]">
+              Hỏi đáp tài liệu thông minh kiểu NotebookLM. Chỉ gửi các đoạn trích cần thiết (Retrieval context).
+            </p>
+          </button>
+        </div>
+
+        {/* OpenAI API Key Management */}
+        <div className="rounded-lg border border-border bg-background p-4 text-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Key className="size-4 text-muted-foreground" />
+              <span className="font-semibold text-foreground">OpenAI API Key</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className={`inline-block size-2 rounded-full ${isApiKeyConfigured ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                <span className={isApiKeyConfigured ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>
+                  {isApiKeyConfigured ? "Đã cấu hình" : "Chưa cấu hình"}
+                </span>
+              </span>
+            </div>
           </div>
-          <div className="rounded-lg border border-border bg-background p-3 space-y-1 opacity-70">
-            <div className="font-semibold text-foreground">Cloud AI (Tùy chọn)</div>
-            <p className="text-muted-foreground text-[11px]">Chỉ kích hoạt khi người dùng cấu hình API Key cá nhân.</p>
+
+          <p className="text-[11px] text-muted-foreground">
+            Khóa API được mã hóa và lưu trữ an toàn trong <strong>Windows Credential Manager</strong> của hệ điều hành. Không lưu trữ vào cơ sở dữ liệu SQLite hay hiển thị lại sau khi lưu.
+          </p>
+
+          {secretsError && (
+            <div className="rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+              {secretsError}
+            </div>
+          )}
+
+          {testResult && (
+            <div
+              className={`rounded-md p-2 text-xs ${
+                testResult.success
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                  : "bg-destructive/10 text-destructive border border-destructive/20"
+              }`}
+            >
+              {testResult.message}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder={isApiKeyConfigured ? "Nhập khóa mới để thay thế (sk-...)" : "Nhập OpenAI API Key (sk-...)"}
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              className="flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <button
+              type="button"
+              disabled={secretsLoading || !apiKeyInput.trim()}
+              onClick={async () => {
+                try {
+                  await saveApiKey(apiKeyInput);
+                  setApiKeyInput("");
+                } catch {}
+              }}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 cursor-pointer shrink-0"
+            >
+              {isApiKeyConfigured ? "Cập nhật" : "Lưu khóa"}
+            </button>
+            {isApiKeyConfigured && (
+              <>
+                <button
+                  type="button"
+                  disabled={testingConnection}
+                  onClick={() => void testConnection()}
+                  className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shrink-0"
+                  title="Kiểm tra kết nối thực tế tới OpenAI"
+                >
+                  <RefreshCw className={`size-3 ${testingConnection ? "animate-spin" : ""}`} />
+                  <span>{testingConnection ? "Đang thử..." : "Kiểm tra kết nối"}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={secretsLoading}
+                  onClick={async () => {
+                    await deleteApiKey();
+                    setApiKeyInput("");
+                  }}
+                  className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 disabled:opacity-50 cursor-pointer shrink-0"
+                >
+                  Xóa khóa
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

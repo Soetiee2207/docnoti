@@ -313,7 +313,7 @@ describe('P5.3 AI Configuration & Analysis Pipeline Orchestration', () => {
           {
             message: {
               content: JSON.stringify({
-                documentType: 'OFFICIAL_NOTICE',
+                documentType: 'OFFICIAL_DOCUMENT',
                 summary: 'Vietnamese official declaration',
                 fields: [],
                 evidences: [
@@ -352,7 +352,7 @@ describe('P5.3 AI Configuration & Analysis Pipeline Orchestration', () => {
 
       const analysis = await ctx.analysisRepo.getActiveAnalysis('doc-openai-success');
       expect(analysis?.provider).toBe('openai');
-      expect(analysis?.documentType).toBe('OFFICIAL_NOTICE');
+      expect(analysis?.documentType).toBe('OFFICIAL_DOCUMENT');
       expect(analysis?.totalTokens).toBe(255);
     });
   });

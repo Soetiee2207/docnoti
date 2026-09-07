@@ -1,4 +1,4 @@
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs"
+import { pdfjsLib } from "./pdfjs"
 import {
   type PDFProcessor,
   type PDFProcessingResult,

@@ -2,6 +2,7 @@ import type {
   AIProvider,
   AnalysisRequest,
   AnalysisResult,
+  AnalysisOptions,
   DocumentClassification,
   ModelMetadata,
   ProviderAvailability,
@@ -49,13 +50,17 @@ export class MockAIProvider implements AIProvider {
     return { available: true };
   }
 
-  async analyze(request: AnalysisRequest): Promise<AnalysisResult> {
+  async analyze(request: AnalysisRequest, options?: AnalysisOptions): Promise<AnalysisResult> {
     const availability = await this.isAvailable();
     if (!availability.available) {
       throw new Error(`Provider unavailable: ${availability.reason}`);
     }
 
-    const firstPage = request.pages[0];
+    const effectiveRequest: AnalysisRequest = options
+      ? { ...request, options: { ...request.options, ...options } }
+      : request;
+
+    const firstPage = effectiveRequest.pages[0];
     const pageNumber = firstPage?.pageNumber ?? 1;
     const pageText = firstPage?.text ?? '';
 
@@ -65,8 +70,15 @@ export class MockAIProvider implements AIProvider {
       ? 'THIS TEXT DOES NOT EXIST ANYWHERE IN THE ORIGINAL DOCUMENT'
       : (sampleWords || 'Sample text excerpt');
 
-    const classification: DocumentClassification = this.options.simulatedClassification ?? 'INVOICE';
-    const summary = this.options.simulatedSummary ?? `Analyzed ${request.fileName} containing ${request.pages.length} pages.`;
+    const classification: DocumentClassification = this.options.simulatedClassification ?? 'REPORT';
+    let summary = this.options.simulatedSummary;
+    if (!summary) {
+      if (request.options?.query) {
+        summary = `Dựa trên nội dung trích xuất từ tài liệu "${request.fileName}", thông tin về "${request.options.query}" được ghi nhận với các nội dung chính: "${sampleWords}".`;
+      } else {
+        summary = `Bản tóm tắt tổng quan cho tài liệu "${request.fileName}" gồm ${request.pages.length} trang.`;
+      }
+    }
 
     const fields: ExtractedField[] = this.options.simulatedFields ?? [
       {

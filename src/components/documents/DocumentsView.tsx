@@ -9,6 +9,7 @@ import {
   Clock,
   AlertTriangle,
   Sparkles,
+  RotateCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useDocuments } from "@/hooks/useDocuments"
@@ -96,6 +97,9 @@ export function DocumentsView({
     loading,
     error,
     importing,
+    processing,
+    refresh,
+    reprocessDocument,
     openPickerAndImport,
     importFilePaths,
   } = useDocuments()
@@ -205,6 +209,17 @@ export function DocumentsView({
               className="h-8 w-64 rounded-lg border border-border bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-ring"
             />
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void refresh()}
+            disabled={loading || processing}
+            className="h-8 gap-1.5 text-xs cursor-pointer"
+            title="Làm mới danh sách tài liệu"
+          >
+            <RotateCw className={`size-3.5 ${loading || processing ? "animate-spin" : ""}`} />
+            <span>Làm mới</span>
+          </Button>
         </div>
         <span className="text-xs text-muted-foreground">
           {filteredDocs.length} tài liệu hiển thị
@@ -278,18 +293,36 @@ export function DocumentsView({
                     {formatDate(doc.createdAt)}
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setSelectedDocId(doc.id)
-                      }}
-                      className="gap-1 text-[11px] h-6"
-                    >
-                      <Sparkles className="size-2.5 text-primary" />
-                      <span>Xem & Hỏi đáp</span>
-                    </Button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {doc.status === "failed" && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void reprocessDocument(doc.id)
+                          }}
+                          disabled={processing}
+                          className="gap-1 text-[11px] h-6 border-destructive/40 text-destructive hover:bg-destructive/10 cursor-pointer"
+                          title="Thử xử lý lại trích xuất PDF và OCR"
+                        >
+                          <RotateCw className={`size-2.5 ${processing ? "animate-spin" : ""}`} />
+                          <span>Xử lý lại</span>
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedDocId(doc.id)
+                        }}
+                        className="gap-1 text-[11px] h-6 cursor-pointer"
+                      >
+                        <Sparkles className="size-2.5 text-primary" />
+                        <span>Xem & Hỏi đáp</span>
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

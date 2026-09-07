@@ -3,6 +3,7 @@ mod storage;
 mod ocr;
 mod autostart;
 mod tray;
+mod secrets;
 
 use rusqlite::Connection;
 use std::fs;
@@ -75,7 +76,11 @@ pub fn run() {
             ocr::check_ocr_available,
             ocr::run_ocr_on_image,
             autostart::get_autostart_status,
-            autostart::set_autostart_status
+            autostart::set_autostart_status,
+            secrets::get_secret,
+            secrets::set_secret,
+            secrets::delete_secret,
+            secrets::has_secret
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

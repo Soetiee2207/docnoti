@@ -73,4 +73,10 @@ describe("PDF Processor (PDF.js) Tests", () => {
   it("throws PDFProcessingError on empty byte array", async () => {
     await expect(processor.process(new Uint8Array([]))).rejects.toThrow(PDFProcessingError)
   })
+
+  it("configures GlobalWorkerOptions correctly", async () => {
+    const { pdfjsLib } = await import("@/services/pdf/pdfjs")
+    expect(pdfjsLib.GlobalWorkerOptions).toBeDefined()
+  })
 })
+

@@ -1,13 +1,13 @@
 export type SemanticStatus = 'VERIFIED' | 'INFERRED' | 'UNCERTAIN';
 
 export type DocumentClassification =
-  | 'INVOICE'
-  | 'CONTRACT'
-  | 'OFFICIAL_NOTICE'
-  | 'RECEIPT'
-  | 'BANK_STATEMENT'
-  | 'TAX_DOCUMENT'
+  | 'UNKNOWN'
+  | 'OFFICIAL_DOCUMENT'
+  | 'ANNOUNCEMENT'
+  | 'PLAN'
   | 'REPORT'
+  | 'MEETING_DOCUMENT'
+  | 'ASSIGNMENT'
   | 'OTHER';
 
 export interface AnalysisCitation {
@@ -62,24 +62,31 @@ export interface DocumentPageInput {
   text: string;
 }
 
+export interface AnalysisOptions {
+  preferredLanguage?: string;
+  temperature?: number;
+  forceRefresh?: boolean;
+  query?: string;
+  isRetrievalGrounded?: boolean;
+  mode?: 'fast' | 'full';
+  maxPages?: number;
+  extractTasks?: boolean;
+}
+
 export interface AnalysisRequest {
   documentId: string;
   fileName: string;
   mimeType: string;
   pages: DocumentPageInput[];
-  options?: {
-    preferredLanguage?: string;
-    temperature?: number;
-    forceRefresh?: boolean;
-    query?: string;
-    isRetrievalGrounded?: boolean;
-  };
+  options?: AnalysisOptions;
 }
 
 export interface AnalysisResult {
   documentId: string;
   documentType: DocumentClassification;
   summary: string;
+  answer?: string;
+  confidence?: SemanticStatus;
   fields: ExtractedField[];
   evidences: AnalysisEvidence[];
   warnings: AnalysisWarning[];
@@ -87,6 +94,16 @@ export interface AnalysisResult {
   model: string;
   usage?: AIUsage;
   analyzedAt: string;
+}
+
+export interface QaHistoryItem {
+  id: string;
+  question: string;
+  result: AnalysisResult;
+  context?: unknown;
+  isDegraded?: boolean;
+  noCandidates?: boolean;
+  timestamp: number | string;
 }
 
 export interface ProviderAvailability {
@@ -98,7 +115,7 @@ export interface AIProvider {
   readonly id: string;
   readonly metadata: ModelMetadata;
   isAvailable(): Promise<ProviderAvailability>;
-  analyze(request: AnalysisRequest): Promise<AnalysisResult>;
+  analyze(request: AnalysisRequest, options?: AnalysisOptions): Promise<AnalysisResult>;
 }
 
 export class AIError extends Error {

@@ -3,9 +3,12 @@ import {
   type AIProvider,
   type AnalysisRequest,
   type AnalysisResult,
+  type AnalysisOptions,
   type ModelMetadata,
   type ProviderAvailability,
   type AIUsage,
+  type DocumentClassification,
+  type SemanticStatus,
   AIError,
 } from './types';
 
@@ -26,23 +29,96 @@ const DEFAULT_CONFIG: Required<Omit<OpenAIProviderConfig, 'fetchFn'>> = {
   maxRetries: 2,
 };
 
-const SYSTEM_PROMPT = `You are the document analysis intelligence engine for docnoti.
-Your task is to analyze document text extracted from pages and output structured JSON.
+const VALID_CLASSIFICATIONS = new Set<string>([
+  'UNKNOWN',
+  'OFFICIAL_DOCUMENT',
+  'ANNOUNCEMENT',
+  'PLAN',
+  'REPORT',
+  'MEETING_DOCUMENT',
+  'ASSIGNMENT',
+  'OTHER',
+]);
 
-Document Types:
-- INVOICE
-- CONTRACT
-- OFFICIAL_NOTICE
-- RECEIPT
-- BANK_STATEMENT
-- TAX_DOCUMENT
+function normalizeClassification(type: string): DocumentClassification {
+  const upper = (type || '').trim().toUpperCase();
+  if (VALID_CLASSIFICATIONS.has(upper)) {
+    return upper as DocumentClassification;
+  }
+  if (upper === 'OFFICIAL_NOTICE' || upper === 'NOTICE') {
+    return 'OFFICIAL_DOCUMENT';
+  }
+  return 'OTHER';
+}
+
+const QA_SYSTEM_PROMPT = `You are the grounded document intelligence engine for docnoti.
+Your task is to answer the user's question accurately, concisely, and naturally based ONLY on the supplied document excerpts.
+
+Document Classification Types (conform to SPEC):
+- UNKNOWN
+- OFFICIAL_DOCUMENT
+- ANNOUNCEMENT
+- PLAN
 - REPORT
+- MEETING_DOCUMENT
+- ASSIGNMENT
+- OTHER
+
+CRITICAL GROUNDING & EVIDENCE RULES:
+1. Answer the user's question directly, clearly, and conversationally in the same language as the question (e.g. Vietnamese if the user asks in Vietnamese).
+2. Strict Grounding: Base your answer EXCLUSIVELY on the provided document excerpts.
+3. If the excerpts do not contain enough information to answer the question, clearly state that the document does not contain enough information to answer. DO NOT speculate or fabricate facts.
+4. Do NOT reference internal system diagnostics (such as RRF, vector scores, chunk IDs, BM25) or say debug text like "Analyzed X containing N pages".
+5. Distinguish direct facts from inferences:
+   - Mark semantic status as "VERIFIED" when facts are explicitly stated verbatim in the text.
+   - Mark semantic status as "INFERRED" when drawing a logical conclusion directly supported by the text.
+   - Mark semantic status as "UNCERTAIN" when the text is ambiguous, incomplete, or partially conflicting.
+6. Evidence & Citations:
+   - For every key claim in your answer, provide an evidence entry with citations.
+   - Each citation MUST specify the accurate pageNumber.
+   - The sourceText MUST be an EXACT, VERBATIM substring copied directly from that page's text in the excerpts.
+   - NEVER fabricate or paraphrase citations. If you cannot quote verbatim, set status to "INFERRED" or "UNCERTAIN".
+
+You MUST respond strictly with valid JSON conforming to the following structure:
+{
+  "documentType": "REPORT",
+  "summary": "Natural, clear, direct answer to the user question.",
+  "fields": [],
+  "evidences": [
+    {
+      "claim": "Direct factual claim from the answer",
+      "status": "VERIFIED" | "INFERRED" | "UNCERTAIN",
+      "confidence": 0.95,
+      "citations": [
+        {
+          "pageNumber": 1,
+          "sourceText": "EXACT verbatim quote from the page text"
+        }
+      ],
+      "reasoning": "Brief explanation connecting the claim to the quote"
+    }
+  ],
+  "warnings": []
+}
+Output pure JSON only, with no markdown formatting fence.`;
+
+const FULL_SUMMARY_SYSTEM_PROMPT = `You are the document analysis intelligence engine for docnoti.
+Your task is to analyze document text extracted from pages, identify its document type, and provide an evidence-grounded summary and structured information.
+
+Document Classification Types (conform to SPEC):
+- UNKNOWN
+- OFFICIAL_DOCUMENT
+- ANNOUNCEMENT
+- PLAN
+- REPORT
+- MEETING_DOCUMENT
+- ASSIGNMENT
 - OTHER
 
 You MUST respond strictly with valid JSON conforming to the following structure:
 {
-  "documentType": "INVOICE",
-  "summary": "Brief 1-3 sentence summary of the document.",
+  "documentType": "REPORT",
+  "summary": "Comprehensive, well-structured summary of the document's content, key points, and context.",
   "fields": [
     {
       "name": "field_name",
@@ -84,7 +160,7 @@ CRITICAL RULES FOR CITATIONS:
 1. Every citation MUST have an accurate pageNumber.
 2. The sourceText MUST be an EXACT, VERBATIM substring copied directly from that page's text.
 3. NEVER fabricate, paraphrase, or hallucinate quotes. If a fact cannot be quoted verbatim, mark status as "INFERRED" or "UNCERTAIN" with appropriate reasoning.
-4. Do NOT include markdown code blocks or explanations outside the JSON object. Output pure JSON only.`;
+4. Output pure JSON only.`;
 
 export class OpenAIProvider implements AIProvider {
   readonly id = 'openai';
@@ -124,14 +200,73 @@ export class OpenAIProvider implements AIProvider {
     return { available: true };
   }
 
+  /**
+   * Lightweight connection test without burning significant tokens.
+   */
+  async testConnection(): Promise<{ success: boolean; message: string }> {
+    const apiKey = await this.getApiKey();
+    if (!apiKey || apiKey.trim().length === 0) {
+      return {
+        success: false,
+        message: 'Chưa cấu hình OpenAI API key trong Windows Credential Manager.',
+      };
+    }
+
+    const fetchFn = this.config.fetchFn ?? globalThis.fetch;
+    const url = `${this.config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+
+    try {
+      const res = await fetchFn(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.config.model,
+          messages: [{ role: 'user', content: 'Ping' }],
+          max_tokens: 1,
+        }),
+      });
+
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          return { success: false, message: 'Khóa API không hợp lệ hoặc không có quyền truy cập (HTTP 401/403).' };
+        }
+        if (res.status === 429) {
+          return { success: false, message: 'Đã vượt giới hạn lượt gọi hoặc hết quota tài khoản OpenAI (HTTP 429).' };
+        }
+        return { success: false, message: `OpenAI trả về mã lỗi HTTP ${res.status}.` };
+      }
+
+      return { success: true, message: `Kết nối thành công tới OpenAI (${this.config.model}).` };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, message: `Lỗi kết nối mạng: ${msg}` };
+    }
+  }
+
   private buildUserMessage(request: AnalysisRequest): string {
-    const lines: string[] = [
-      `Document Title / File Name: ${request.fileName}`,
-      `MIME Type: ${request.mimeType}`,
-      `Document ID: ${request.documentId}`,
-      request.options?.preferredLanguage ? `Preferred Language: ${request.options.preferredLanguage}` : '',
-      '\n--- DOCUMENT PAGES ---',
-    ];
+    const isQa = Boolean(request.options?.query);
+    const lines: string[] = [];
+
+    if (isQa) {
+      lines.push(`USER QUESTION: ${request.options!.query}`);
+      lines.push(`Document Title / File Name: ${request.fileName}`);
+      lines.push(`Document ID: ${request.documentId}`);
+      if (request.options?.preferredLanguage) {
+        lines.push(`Preferred Language: ${request.options.preferredLanguage}`);
+      }
+      lines.push('\n--- SUPPLIED DOCUMENT EXCERPTS ---');
+    } else {
+      lines.push(`Document Title / File Name: ${request.fileName}`);
+      lines.push(`MIME Type: ${request.mimeType}`);
+      lines.push(`Document ID: ${request.documentId}`);
+      if (request.options?.preferredLanguage) {
+        lines.push(`Preferred Language: ${request.options.preferredLanguage}`);
+      }
+      lines.push('\n--- DOCUMENT PAGES ---');
+    }
 
     for (const page of request.pages) {
       lines.push(`\n=== Page ${page.pageNumber} ===\n${page.text}`);
@@ -157,16 +292,26 @@ export class OpenAIProvider implements AIProvider {
       throw new AIError('Model output missing valid documentType', 'MALFORMED_RESPONSE', this.id, false);
     }
 
+    if (typeof obj.summary !== 'string' && typeof obj.answer === 'string') {
+      obj.summary = obj.answer;
+    } else if (typeof obj.answer !== 'string' && typeof obj.summary === 'string') {
+      obj.answer = obj.summary;
+    }
+
     if (typeof obj.summary !== 'string') {
       throw new AIError('Model output missing valid summary', 'MALFORMED_RESPONSE', this.id, false);
     }
 
     if (!Array.isArray(obj.fields)) {
-      throw new AIError('Model output missing fields array', 'MALFORMED_RESPONSE', this.id, false);
+      obj.fields = [];
     }
 
     if (!Array.isArray(obj.evidences)) {
-      throw new AIError('Model output missing evidences array', 'MALFORMED_RESPONSE', this.id, false);
+      if (Array.isArray(obj.evidence)) {
+        obj.evidences = obj.evidence;
+      } else {
+        throw new AIError('Model output missing evidences array', 'MALFORMED_RESPONSE', this.id, false);
+      }
     }
   }
 
@@ -175,6 +320,7 @@ export class OpenAIProvider implements AIProvider {
     const url = `${this.config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
     const userMessage = this.buildUserMessage(request);
+    const systemPrompt = request.options?.query ? QA_SYSTEM_PROMPT : FULL_SUMMARY_SYSTEM_PROMPT;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs);
@@ -192,7 +338,7 @@ export class OpenAIProvider implements AIProvider {
           response_format: { type: 'json_object' },
           temperature: request.options?.temperature ?? 0.1,
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage },
           ],
         }),
@@ -248,25 +394,19 @@ export class OpenAIProvider implements AIProvider {
       }
 
       throw new AIError(
-        `OpenAI API error (${res.status}): ${errorText}`,
+        `OpenAI request failed with status ${res.status}: ${errorText}`,
         'API_ERROR',
         this.id,
         false
       );
     }
 
-    const data = await res.json() as {
-      choices?: Array<{
-        message?: {
-          content?: string;
-        };
-      }>;
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-      };
-    };
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new AIError('Failed to parse OpenAI response body as JSON', 'MALFORMED_RESPONSE', this.id, false);
+    }
 
     const content = data.choices?.[0]?.message?.content;
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
@@ -301,12 +441,21 @@ export class OpenAIProvider implements AIProvider {
       };
     }
 
+    const docType = normalizeClassification(parsed.documentType);
+    const rawConfidence = (parsed as any).confidence;
+    const confidence: SemanticStatus =
+      rawConfidence === 'VERIFIED' || rawConfidence === 'INFERRED' || rawConfidence === 'UNCERTAIN'
+        ? rawConfidence
+        : 'VERIFIED';
+
     return {
       documentId: request.documentId,
-      documentType: parsed.documentType as any,
+      documentType: docType,
       summary: parsed.summary,
-      fields: parsed.fields as any,
-      evidences: parsed.evidences as any,
+      answer: (parsed as any).answer || parsed.summary,
+      confidence,
+      fields: (parsed.fields as any) || [],
+      evidences: (parsed.evidences as any) || [],
       warnings: (parsed.warnings as any) || [],
       provider: this.metadata.providerId,
       model: this.metadata.modelId,
@@ -315,7 +464,11 @@ export class OpenAIProvider implements AIProvider {
     };
   }
 
-  async analyze(request: AnalysisRequest): Promise<AnalysisResult> {
+  async analyze(request: AnalysisRequest, options?: AnalysisOptions): Promise<AnalysisResult> {
+    const effectiveRequest: AnalysisRequest = options
+      ? { ...request, options: { ...request.options, ...options } }
+      : request;
+
     const availability = await this.isAvailable();
     if (!availability.available) {
       throw new AIError(
@@ -336,7 +489,7 @@ export class OpenAIProvider implements AIProvider {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        return await this.executeCall(apiKey, request);
+        return await this.executeCall(apiKey, effectiveRequest);
       } catch (err: unknown) {
         lastError = err as Error;
 

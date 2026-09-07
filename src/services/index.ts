@@ -31,7 +31,7 @@ import {
 } from "./ai"
 import {
   type SecretsService,
-  InMemorySecretsService,
+  createDefaultSecretsService,
 } from "./secrets"
 import {
   ChunkingService,
@@ -165,13 +165,16 @@ export async function getAppServices(): Promise<AppServices> {
       const ocrProvider = new PaddleOCRProvider()
       const ocrService = new OCRService(ocrProvider, pageRenderer)
 
-      const secretsService: SecretsService = new InMemorySecretsService()
+      const appSettingsRepo = new AppSettingsRepository(db)
+      const savedCloudEnabled = await appSettingsRepo.getBoolean('cloud_ai_enabled', false)
+
+      const secretsService: SecretsService = createDefaultSecretsService()
       const mockAiProvider = new MockAIProvider()
       const openAiProvider = new OpenAIProvider(secretsService)
       const aiConfigService = new AIConfigService({
-        providerType: 'mock',
-        cloudEnabled: false,
-      })
+        providerType: savedCloudEnabled ? 'openai' : 'mock',
+        cloudEnabled: savedCloudEnabled,
+      }, appSettingsRepo)
       const aiProviderSelector = new AIProviderSelector(
         mockAiProvider,
         openAiProvider,
@@ -232,7 +235,6 @@ export async function getAppServices(): Promise<AppServices> {
         taskExtractionService
       )
 
-      const appSettingsRepo = new AppSettingsRepository(db)
       const autostartService = new AutostartService(appSettingsRepo)
       const appLifecycleService = new AppLifecycleService(
         autostartService,

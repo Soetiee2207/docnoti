@@ -66,7 +66,7 @@ describe('P5.2 OpenAIProvider Tests', () => {
           {
             message: {
               content: JSON.stringify({
-                documentType: 'INVOICE',
+                documentType: 'OFFICIAL_DOCUMENT',
                 summary: 'Hóa đơn giá trị gia tăng của Công ty ABC',
                 fields: [
                   {
@@ -135,7 +135,7 @@ describe('P5.2 OpenAIProvider Tests', () => {
       expect(requestBody.model).toBe('gpt-4o-mini');
       expect(requestBody.response_format).toEqual({ type: 'json_object' });
 
-      expect(result.documentType).toBe('INVOICE');
+      expect(result.documentType).toBe('OFFICIAL_DOCUMENT');
       expect(result.summary).toContain('Công ty ABC');
       expect(result.fields[0].name).toBe('totalAmount');
       expect(result.fields[0].value).toBe('2.000.000 VNĐ');
@@ -300,8 +300,8 @@ describe('P5.2 OpenAIProvider Tests', () => {
           {
             message: {
               content: JSON.stringify({
-                documentType: 'CONTRACT',
-                summary: 'Contract recovered after retry',
+                documentType: 'REPORT',
+                summary: 'Report recovered after retry',
                 fields: [],
                 evidences: [],
               }),
@@ -323,7 +323,7 @@ describe('P5.2 OpenAIProvider Tests', () => {
       });
 
       const result = await provider.analyze(sampleRequest);
-      expect(result.documentType).toBe('CONTRACT');
+      expect(result.documentType).toBe('REPORT');
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
@@ -425,6 +425,227 @@ describe('P5.2 OpenAIProvider Tests', () => {
       expect(validated.fields[0].semanticStatus).toBe('UNCERTAIN');
       expect(validated.fields[0].evidence.status).toBe('UNCERTAIN');
       expect(validated.warnings.some((w) => w.code === 'EVIDENCE_QUOTE_NOT_FOUND')).toBe(true);
+    });
+  });
+
+  describe('Document Q&A & NotebookLM Prompting', () => {
+    it('uses QA system prompt and populates answer field when query is provided', async () => {
+      const secrets = new InMemorySecretsService({
+        openai_api_key: 'sk-test-secret',
+      });
+
+      let capturedPayload: any = null;
+      const mockFetch = vi.fn().mockImplementation(async (_url, init) => {
+        capturedPayload = JSON.parse(init.body);
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    answer: 'Hợp đồng có thời hạn là 12 tháng kể từ ngày ký.',
+                    documentType: 'REPORT',
+                    confidence: 'VERIFIED',
+                    evidences: [
+                      {
+                        claim: 'Thời hạn hợp đồng là 12 tháng',
+                        status: 'VERIFIED',
+                        confidence: 0.95,
+                        citations: [
+                          {
+                            pageNumber: 1,
+                            sourceText: 'Thời hạn là 12 tháng',
+                          },
+                        ],
+                      },
+                    ],
+                    fields: [],
+                  }),
+                },
+              },
+            ],
+            usage: { prompt_tokens: 100, completion_tokens: 40, total_tokens: 140 },
+          }),
+          { status: 200 }
+        );
+      });
+
+      const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch });
+      const result = await provider.analyze(
+        {
+          documentId: 'doc-qa-1',
+          fileName: 'contract.pdf',
+          mimeType: 'application/pdf',
+          pages: [{ pageNumber: 1, text: 'Thời hạn là 12 tháng' }],
+        },
+        { query: 'Thời hạn hợp đồng là bao lâu?' }
+      );
+
+      expect(capturedPayload).toBeDefined();
+      expect(capturedPayload.messages[0].content).toContain("answer the user's question accurately");
+      expect(capturedPayload.messages[1].content).toContain('USER QUESTION: Thời hạn hợp đồng là bao lâu?');
+      expect(result.answer).toBe('Hợp đồng có thời hạn là 12 tháng kể từ ngày ký.');
+      expect(result.summary).toBe('Hợp đồng có thời hạn là 12 tháng kể từ ngày ký.');
+      expect(result.confidence).toBe('VERIFIED');
+    });
+
+    it('correctly returns UNCERTAIN answer when document has insufficient context', async () => {
+      const secrets = new InMemorySecretsService({
+        openai_api_key: 'sk-test-secret',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    answer: 'Tài liệu không có thông tin về người bảo lãnh.',
+                    documentType: 'UNKNOWN',
+                    confidence: 'UNCERTAIN',
+                    evidences: [],
+                    fields: [],
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      );
+
+      const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch });
+      const result = await provider.analyze(
+        {
+          documentId: 'doc-no-info',
+          fileName: 'doc.pdf',
+          mimeType: 'application/pdf',
+          pages: [{ pageNumber: 1, text: 'Chỉ có thông tin giá hàng.' }],
+        },
+        { query: 'Ai là người bảo lãnh?' }
+      );
+
+      expect(result.confidence).toBe('UNCERTAIN');
+      expect(result.answer).toContain('không có thông tin');
+      expect(result.evidences).toHaveLength(0);
+    });
+  });
+
+  describe('SPEC Classification Taxonomy Normalization', () => {
+    it('maps legacy or unknown taxonomy strings to valid SPEC taxonomy classes', async () => {
+      const secrets = new InMemorySecretsService({
+        openai_api_key: 'sk-test-secret',
+      });
+
+      const legacyTypes = [
+        { raw: 'INVOICE', expected: 'OTHER' },
+        { raw: 'CONTRACT', expected: 'OTHER' },
+        { raw: 'OFFICIAL_DOCUMENT', expected: 'OFFICIAL_DOCUMENT' },
+        { raw: 'REPORT', expected: 'REPORT' },
+        { raw: 'ANNOUNCEMENT', expected: 'ANNOUNCEMENT' },
+        { raw: 'PLAN', expected: 'PLAN' },
+        { raw: 'MEETING_DOCUMENT', expected: 'MEETING_DOCUMENT' },
+        { raw: 'ASSIGNMENT', expected: 'ASSIGNMENT' },
+        { raw: 'SOMETHING_UNKNOWN_XYZ', expected: 'OTHER' },
+      ];
+
+      for (const item of legacyTypes) {
+        const mockFetch = vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      documentType: item.raw,
+                      summary: `Test for ${item.raw}`,
+                      fields: [],
+                      evidences: [],
+                    }),
+                  },
+                },
+              ],
+            }),
+            { status: 200 }
+          )
+        );
+
+        const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch });
+        const result = await provider.analyze(sampleRequest);
+        expect(result.documentType).toBe(item.expected);
+      }
+    });
+  });
+
+  describe('Test Connection & API Key Protection', () => {
+    it('testConnection reports success when API key is valid', async () => {
+      const secrets = new InMemorySecretsService({
+        openai_api_key: 'sk-valid-key-12345',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: 'OK' } }],
+          }),
+          { status: 200 }
+        )
+      );
+
+      const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch });
+      const res = await provider.testConnection();
+
+      expect(res.success).toBe(true);
+      expect(res.message).toContain('thành công');
+    });
+
+    it('testConnection reports clear error without leaking key when 401 Unauthorized', async () => {
+      const secretKey = 'sk-super-secret-key-do-not-leak';
+      const secrets = new InMemorySecretsService({
+        openai_api_key: secretKey,
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: { message: 'Incorrect API key provided: ' + secretKey },
+          }),
+          { status: 401 }
+        )
+      );
+
+      const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch });
+      const res = await provider.testConnection();
+
+      expect(res.success).toBe(false);
+      expect(res.message).not.toContain(secretKey);
+      expect(res.message).toContain('không hợp lệ');
+    });
+
+    it('never leaks API key in error messages or warnings on API failure', async () => {
+      const secretKey = 'sk-secret-token-abcdef123456';
+      const secrets = new InMemorySecretsService({
+        openai_api_key: secretKey,
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: { message: `Fatal error involving ${secretKey}` },
+          }),
+          { status: 500 }
+        )
+      );
+
+      const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch, maxRetries: 1 });
+
+      try {
+        await provider.analyze(sampleRequest);
+        expect.unreachable('Should have thrown');
+      } catch (err: any) {
+        expect(err.message).not.toContain(secretKey);
+      }
     });
   });
 });
