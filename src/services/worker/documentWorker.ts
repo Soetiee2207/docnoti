@@ -1,5 +1,5 @@
 import type { DocumentRepository } from "@/repositories/documentRepository"
-import type { ProcessingJobRepository } from "@/repositories/processingJobRepository"
+import type { ProcessingJobRepository, StaleJobRecoveryResult } from "@/repositories/processingJobRepository"
 import type { DocumentPageRepository } from "@/repositories/documentPageRepository"
 import type { StorageService } from "@/services/storage"
 import type { PDFProcessor, PDFProcessingResult } from "@/services/pdf/types"
@@ -22,6 +22,12 @@ export interface WorkerJobResult {
   error?: string
 }
 
+export interface DocumentWorkerOptions {
+  workerId?: string
+  leaseDurationMs?: number
+  heartbeatIntervalMs?: number
+}
+
 export class DocumentWorker {
   private documentRepo: DocumentRepository
   private jobRepo: ProcessingJobRepository
@@ -37,6 +43,10 @@ export class DocumentWorker {
   private isRunning = false
   private backgroundTimer: NodeJS.Timeout | null = null
 
+  readonly workerId: string
+  readonly leaseDurationMs: number
+  readonly heartbeatIntervalMs: number
+
   constructor(
     documentRepo: DocumentRepository,
     jobRepo: ProcessingJobRepository,
@@ -48,7 +58,8 @@ export class DocumentWorker {
     autoAnalyze: boolean = false,
     chunkingService?: ChunkingService,
     embeddingService?: EmbeddingService,
-    taskExtractionService?: TaskExtractionService
+    taskExtractionService?: TaskExtractionService,
+    options?: DocumentWorkerOptions
   ) {
     this.documentRepo = documentRepo
     this.jobRepo = jobRepo
@@ -61,6 +72,10 @@ export class DocumentWorker {
     this.chunkingService = chunkingService
     this.embeddingService = embeddingService
     this.taskExtractionService = taskExtractionService
+
+    this.workerId = options?.workerId ?? `worker-${Math.random().toString(36).substring(2, 10)}`
+    this.leaseDurationMs = options?.leaseDurationMs ?? 5 * 60 * 1000
+    this.heartbeatIntervalMs = options?.heartbeatIntervalMs ?? 60 * 1000
   }
 
   /**
@@ -177,8 +192,8 @@ export class DocumentWorker {
    * Concurrency-safe: claims job atomically before processing.
    */
   async processJob(jobId: string): Promise<WorkerJobResult> {
-    // Attempt to atomically claim the job
-    const claimedJob = await this.jobRepo.claimJob(jobId)
+    // Attempt to atomically claim the job with ownership lease
+    const claimedJob = await this.jobRepo.claimJob(jobId, this.workerId, this.leaseDurationMs)
     if (!claimedJob) {
       return {
         jobId,
@@ -190,6 +205,11 @@ export class DocumentWorker {
 
     const documentId = claimedJob.documentId
     const jobType = claimedJob.jobType || "document_pipeline"
+
+    // Start background lease renewal heartbeat while job is processing
+    const heartbeatTimer = setInterval(() => {
+      void this.jobRepo.heartbeat(jobId, this.workerId, this.leaseDurationMs)
+    }, this.heartbeatIntervalMs)
 
     try {
       if (jobType === "ocr") {
@@ -252,6 +272,8 @@ export class DocumentWorker {
         success: false,
         error: errorMessage,
       }
+    } finally {
+      clearInterval(heartbeatTimer)
     }
   }
 
@@ -298,18 +320,24 @@ export class DocumentWorker {
       // Insufficient or blank text: mark as needs_ocr
       await this.documentRepo.updateStatus(documentId, "needs_ocr")
 
-      // Enqueue persistent OCR job if OCR service is configured
-      const ocrJobId = `job-ocr-${documentId}-${Date.now()}`
-      await this.jobRepo.create({
-        id: ocrJobId,
-        documentId,
-        jobType: "ocr",
-        status: "pending",
-        retryCount: 0,
-        maxRetries: 3,
-        createdAt: now,
-        updatedAt: now,
-      })
+      // Enqueue persistent OCR job if OCR service is configured and not already active
+      const existingJobs = await this.jobRepo.findByDocumentId(documentId)
+      const activeOcrJob = existingJobs.find(
+        (j) => j.jobType === "ocr" && (j.status === "pending" || j.status === "processing")
+      )
+      if (!activeOcrJob) {
+        const ocrJobId = `job-ocr-${documentId}-${Date.now()}`
+        await this.jobRepo.create({
+          id: ocrJobId,
+          documentId,
+          jobType: "ocr",
+          status: "pending",
+          retryCount: 0,
+          maxRetries: 3,
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
     } else {
       // Sufficient text extracted: chunk finalized pages if chunkingService is configured
       if (this.chunkingService) {
@@ -514,13 +542,23 @@ export class DocumentWorker {
   }
 
   /**
-   * Starts periodic background polling for pending jobs
+   * Recovers any stale processing jobs stranded by an abnormal shutdown or crash.
+   */
+  async recoverStaleJobs(): Promise<StaleJobRecoveryResult> {
+    return await this.jobRepo.recoverStaleJobs(this.leaseDurationMs)
+  }
+
+  /**
+   * Starts periodic background polling for pending jobs.
+   * Performs crash recovery for stale jobs before initiating polling.
    */
   startBackground(intervalMs = 30000): void {
     if (this.backgroundTimer) return
 
-    // Run immediate check
-    void this.processPendingJobs()
+    // Run startup crash recovery for stale jobs, then immediately process pending jobs
+    void this.recoverStaleJobs().then(() => {
+      void this.processPendingJobs()
+    })
 
     this.backgroundTimer = setInterval(() => {
       void this.processPendingJobs()

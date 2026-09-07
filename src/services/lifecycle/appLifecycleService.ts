@@ -48,7 +48,7 @@ export class AppLifecycleService {
       console.error('Failed to start ReminderScheduler:', err);
     }
 
-    // 3. Start DocumentWorker background polling loop
+    // 3. Start DocumentWorker background polling loop (runs stale job recovery on startup)
     try {
       this.documentWorker.startBackground();
     } catch (err) {

@@ -27,6 +27,10 @@ export const processingJobs = sqliteTable("processing_jobs", {
   updatedAt: text("updated_at").notNull(),
   startedAt: text("started_at"),
   completedAt: text("completed_at"),
+  lockedBy: text("locked_by"),
+  lockedAt: text("locked_at"),
+  heartbeatAt: text("heartbeat_at"),
+  leaseExpiresAt: text("lease_expires_at"),
 })
 
 export const documentPages = sqliteTable("document_pages", {

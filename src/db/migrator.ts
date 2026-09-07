@@ -240,6 +240,14 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 `
 
+export const PROCESSING_JOBS_LEASE_MIGRATION_SQL = `
+ALTER TABLE processing_jobs ADD COLUMN locked_by TEXT;
+ALTER TABLE processing_jobs ADD COLUMN locked_at TEXT;
+ALTER TABLE processing_jobs ADD COLUMN heartbeat_at TEXT;
+ALTER TABLE processing_jobs ADD COLUMN lease_expires_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_processing_jobs_lease ON processing_jobs(status, lease_expires_at);
+`
+
 interface MigrationItem {
   id: string
   sql: string
@@ -285,6 +293,10 @@ const MIGRATIONS: MigrationItem[] = [
   {
     id: "0009_app_settings",
     sql: APP_SETTINGS_MIGRATION_SQL,
+  },
+  {
+    id: "0010_processing_jobs_lease",
+    sql: PROCESSING_JOBS_LEASE_MIGRATION_SQL,
   },
 ]
 
