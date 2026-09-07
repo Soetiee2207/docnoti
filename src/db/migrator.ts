@@ -207,6 +207,31 @@ CREATE INDEX IF NOT EXISTS idx_calendar_events_start_date ON calendar_events(sta
 CREATE INDEX IF NOT EXISTS idx_calendar_events_status ON calendar_events(status);
 `
 
+export const REMINDERS_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS reminders (
+  id TEXT PRIMARY KEY NOT NULL,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  reminder_type TEXT NOT NULL,
+  scheduled_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  delivered_at TEXT,
+  cancelled_at TEXT,
+  notification_id TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  error TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_task_id ON reminders(task_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_document_id ON reminders(document_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status);
+CREATE INDEX IF NOT EXISTS idx_reminders_scheduled_at ON reminders(scheduled_at);
+`
+
 interface MigrationItem {
   id: string
   sql: string
@@ -244,6 +269,10 @@ const MIGRATIONS: MigrationItem[] = [
   {
     id: "0007_calendar_events",
     sql: CALENDAR_EVENTS_MIGRATION_SQL,
+  },
+  {
+    id: "0008_reminders",
+    sql: REMINDERS_MIGRATION_SQL,
   },
 ]
 

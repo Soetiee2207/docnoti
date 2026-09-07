@@ -162,3 +162,28 @@ export const calendarEvents = sqliteTable("calendar_events", {
 
 export type CalendarEventRecord = typeof calendarEvents.$inferSelect
 export type NewCalendarEventRecord = typeof calendarEvents.$inferInsert
+
+export const reminders = sqliteTable("reminders", {
+  id: text("id").primaryKey(),
+  taskId: text("task_id")
+    .notNull()
+    .references(() => tasks.id, { onDelete: "cascade" }),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  reminderType: text("reminder_type").notNull(),
+  scheduledAt: text("scheduled_at").notNull(),
+  status: text("status").notNull().default("pending"),
+  deliveredAt: text("delivered_at"),
+  cancelledAt: text("cancelled_at"),
+  notificationId: text("notification_id"),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  error: text("error"),
+  retryCount: integer("retry_count").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export type ReminderRecord = typeof reminders.$inferSelect
+export type NewReminderRecord = typeof reminders.$inferInsert

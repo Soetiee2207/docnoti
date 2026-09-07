@@ -47,6 +47,18 @@ import {
 import { HybridRetrievalService } from "./retrieval"
 import { TaskRepository } from "@/repositories/taskRepository"
 import { TaskExtractionService } from "./tasks"
+import { CalendarEventRepository } from "@/repositories/calendarEventRepository"
+import {
+  InternalCalendarProvider,
+  WindowsCalendarAdapter,
+  CalendarService,
+} from "./calendar"
+import { ReminderRepository } from "@/repositories/reminderRepository"
+import {
+  WindowsToastNotificationProvider,
+  NotificationService,
+  ReminderScheduler,
+} from "./notification"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -86,6 +98,14 @@ export interface AppServices {
   contextBuilder: ContextBuilder
   taskRepo: TaskRepository
   taskExtractionService: TaskExtractionService
+  calendarEventRepo: CalendarEventRepository
+  internalCalendarProvider: InternalCalendarProvider
+  windowsCalendarAdapter: WindowsCalendarAdapter
+  calendarService: CalendarService
+  reminderRepo: ReminderRepository
+  windowsToastProvider: WindowsToastNotificationProvider
+  notificationService: NotificationService
+  reminderScheduler: ReminderScheduler
 }
 
 
@@ -173,6 +193,23 @@ export async function getAppServices(): Promise<AppServices> {
       const taskRepo = new TaskRepository(db)
       const taskExtractionService = new TaskExtractionService(taskRepo)
 
+      const calendarEventRepo = new CalendarEventRepository(db)
+      const internalCalendarProvider = new InternalCalendarProvider(calendarEventRepo)
+      const windowsCalendarAdapter = new WindowsCalendarAdapter(calendarEventRepo)
+      const calendarService = new CalendarService(taskRepo, [
+        internalCalendarProvider,
+        windowsCalendarAdapter,
+      ])
+
+      const reminderRepo = new ReminderRepository(db)
+      const windowsToastProvider = new WindowsToastNotificationProvider()
+      const notificationService = new NotificationService(taskRepo, reminderRepo)
+      const reminderScheduler = new ReminderScheduler(
+        reminderRepo,
+        taskRepo,
+        windowsToastProvider
+      )
+
       const documentWorker = new DocumentWorker(
         documentRepo,
         jobRepo,
@@ -218,6 +255,14 @@ export async function getAppServices(): Promise<AppServices> {
         contextBuilder,
         taskRepo,
         taskExtractionService,
+        calendarEventRepo,
+        internalCalendarProvider,
+        windowsCalendarAdapter,
+        calendarService,
+        reminderRepo,
+        windowsToastProvider,
+        notificationService,
+        reminderScheduler,
       }
 
       return servicesInstance
@@ -241,6 +286,8 @@ export * from "./search"
 export * from "./embedding"
 export * from "./retrieval"
 export * from "./tasks"
+export * from "./calendar"
+export * from "./notification"
 
 
 

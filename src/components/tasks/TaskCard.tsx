@@ -10,10 +10,18 @@ import {
   ArrowUpRight,
   UserCheck,
   FileText,
+  CalendarPlus,
+  CalendarCheck,
+  Loader2,
+  AlertCircle,
+  Bell,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/documents/EvidenceBadge"
 import type { TaskItem } from "@/services/tasks"
+import { useCalendar } from "@/hooks/useCalendar"
+import { useReminders } from "@/hooks/useReminders"
+import type { ReminderType } from "@/services/notification"
 
 export interface TaskCardProps {
   task: TaskItem
@@ -39,6 +47,49 @@ export function TaskCard({
   const [editDeadlineDate, setEditDeadlineDate] = useState(task.deadlineDate ?? "")
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [selectedProvider, setSelectedProvider] = useState<string>("internal")
+  const [isScheduling, setIsScheduling] = useState<boolean>(false)
+  const [calendarError, setCalendarError] = useState<string | null>(null)
+
+  const {
+    events,
+    providers,
+    scheduleTask,
+    cancelEvent,
+    checkEligibility,
+  } = useCalendar({ taskId: task.id })
+
+  const {
+    reminders,
+    providerAvailability: toastAvailability,
+    configureReminders,
+  } = useReminders({ taskId: task.id })
+
+  const [isUpdatingReminders, setIsUpdatingReminders] = useState(false)
+  const [reminderError, setReminderError] = useState<string | null>(null)
+
+  const scheduledEvent = events.find((e) => e.status === "scheduled")
+  const eligibility = checkEligibility(task)
+
+  const activeReminderTypes = reminders
+    .filter((r) => r.status === "pending" || r.status === "delivered")
+    .map((r) => r.reminderType)
+
+  const handleToggleLeadTime = async (type: ReminderType) => {
+    try {
+      setIsUpdatingReminders(true)
+      setReminderError(null)
+      const nextTypes = activeReminderTypes.includes(type)
+        ? activeReminderTypes.filter((t) => t !== type)
+        : [...activeReminderTypes, type]
+      await configureReminders(task.id, nextTypes)
+    } catch (err) {
+      setReminderError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsUpdatingReminders(false)
+    }
+  }
 
   const handleConfirmDirect = async () => {
     try {
@@ -81,6 +132,30 @@ export function TaskCard({
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  const handleAddToCalendar = async () => {
+    try {
+      setIsScheduling(true)
+      setCalendarError(null)
+      await scheduleTask(task.id, selectedProvider)
+    } catch (err) {
+      setCalendarError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsScheduling(false)
+    }
+  }
+
+  const handleCancelCalendar = async () => {
+    try {
+      setIsScheduling(true)
+      setCalendarError(null)
+      await cancelEvent(task.id)
+    } catch (err) {
+      setCalendarError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsScheduling(false)
     }
   }
 
@@ -324,10 +399,204 @@ export function TaskCard({
             </div>
           )}
 
-          {task.status === "confirmed" && task.confirmedAt && (
-            <div className="pt-1 text-[10px] text-muted-foreground flex items-center justify-between">
-              <span>Đã xác nhận: {new Date(task.confirmedAt).toLocaleString("vi-VN")}</span>
-              <span className="text-emerald-600 dark:text-emerald-400 font-medium">Sẵn sàng đồng bộ</span>
+          {task.status === "confirmed" && (
+            <div className="pt-2 border-t border-border/40 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                {scheduledEvent ? (
+                  <div className="flex flex-wrap items-center justify-between w-full gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-md p-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-400">
+                        <CalendarCheck className="size-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
+                          <span>Đã lên lịch</span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 border border-emerald-500/30">
+                            {scheduledEvent.provider === "windows" ? "Windows Calendar" : "Lịch nội bộ"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {scheduledEvent.isAllDay ? "Cả ngày" : "Giờ hẹn"}: {scheduledEvent.startDate}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCancelCalendar}
+                      disabled={isScheduling}
+                      className="h-7 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    >
+                      Hủy khỏi lịch
+                    </Button>
+                  </div>
+                ) : eligibility.eligible ? (
+                  <div className="flex flex-wrap items-center justify-between w-full gap-2 bg-muted/40 border border-border/50 rounded-md p-2">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="size-4 text-primary" />
+                      <div>
+                        <span className="font-medium text-foreground text-xs">Lên lịch sự kiện</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {providers.length > 1 ? (
+                            <select
+                              value={selectedProvider}
+                              onChange={(e) => setSelectedProvider(e.target.value)}
+                              className="text-[11px] bg-background border border-border rounded px-1.5 py-0.5 text-foreground"
+                            >
+                              {providers.map((p) => (
+                                <option key={p.id} value={p.id} disabled={!p.availability.available}>
+                                  {p.name} {!p.availability.available ? "(Không khả dụng)" : ""}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">Lịch nội bộ</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={handleAddToCalendar}
+                      disabled={isScheduling}
+                      className="h-7 gap-1.5 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
+                    >
+                      {isScheduling ? <Loader2 className="size-3 animate-spin" /> : <CalendarPlus className="size-3" />}
+                      <span>Thêm vào lịch</span>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between w-full gap-2 bg-amber-500/10 border border-amber-500/20 rounded-md p-2">
+                    <div className="flex items-start gap-1.5">
+                      <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <span className="text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                          Chưa thể thêm vào lịch
+                        </span>
+                        <p className="text-[11px] text-muted-foreground">
+                          {eligibility.reason}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditing(true)}
+                      className="h-6 text-[11px] shrink-0 border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-500/10"
+                    >
+                      Sửa hạn chót
+                    </Button>
+                  </div>
+                )}
+
+                {calendarError && (
+                  <p className="text-xs text-destructive flex items-center gap-1 w-full">
+                    <AlertCircle className="size-3" />
+                    <span>{calendarError}</span>
+                  </p>
+                )}
+
+                {/* Reminders & Windows Toast Notifications */}
+                {eligibility.eligible && (
+                  <div className="w-full bg-muted/40 border border-border/50 rounded-md p-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+                        <Bell className="size-3.5 text-primary" />
+                        <span>Nhắc nhở thông báo (Windows Toast)</span>
+                      </div>
+                      {toastAvailability && !toastAvailability.available && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                          (Chưa bật native)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={activeReminderTypes.includes("1_day_before")}
+                          onChange={() => handleToggleLeadTime("1_day_before")}
+                          disabled={isUpdatingReminders}
+                          className="rounded border-border"
+                        />
+                        <span className="text-[11px] text-foreground">Trước 1 ngày</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={activeReminderTypes.includes("1_hour_before")}
+                          onChange={() => handleToggleLeadTime("1_hour_before")}
+                          disabled={isUpdatingReminders}
+                          className="rounded border-border"
+                        />
+                        <span className="text-[11px] text-foreground">Trước 1 giờ</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={activeReminderTypes.includes("at_deadline")}
+                          onChange={() => handleToggleLeadTime("at_deadline")}
+                          disabled={isUpdatingReminders}
+                          className="rounded border-border"
+                        />
+                        <span className="text-[11px] text-foreground">Đúng hạn</span>
+                      </label>
+                    </div>
+
+                    {/* Active reminders list */}
+                    {reminders.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/40">
+                        {reminders.map((r) => (
+                          <span
+                            key={r.id}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${
+                              r.status === "delivered"
+                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                                : r.status === "pending"
+                                ? "bg-primary/10 text-primary border border-primary/20"
+                                : r.status === "missed"
+                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            <span>
+                              {`${
+                                r.reminderType === "1_day_before"
+                                  ? "1 ngày"
+                                  : r.reminderType === "1_hour_before"
+                                  ? "1 giờ"
+                                  : "Đúng hạn"
+                              }: ${
+                                r.status === "delivered"
+                                  ? "Đã gửi"
+                                  : r.status === "pending"
+                                  ? "Đã lên lịch"
+                                  : r.status === "missed"
+                                  ? "Đã lỡ"
+                                  : r.status
+                              }`}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {reminderError && (
+                      <p className="text-xs text-destructive">{reminderError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {task.confirmedAt && (
+                <div className="pt-1 text-[10px] text-muted-foreground flex items-center justify-between">
+                  <span>Đã xác nhận: {new Date(task.confirmedAt).toLocaleString("vi-VN")}</span>
+                </div>
+              )}
             </div>
           )}
 
