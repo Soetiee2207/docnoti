@@ -8,10 +8,15 @@ import type {
   DocumentPageContextGroup,
   SelectedContextChunk,
 } from "./types"
+import {
+  CONSERVATIVE_CHARS_PER_TOKEN,
+  DEFAULT_QA_TOKEN_BUDGET,
+} from "./tokenBudget"
 
-export const DEFAULT_MAX_TOKENS = 3000
-export const DEFAULT_CHARS_PER_TOKEN = 4
-export const DEFAULT_MAX_CHUNKS = 20
+export const DEFAULT_MAX_TOKENS = DEFAULT_QA_TOKEN_BUDGET.contextBudget
+export const DEFAULT_CHARS_PER_TOKEN = CONSERVATIVE_CHARS_PER_TOKEN
+export const DEFAULT_MAX_CHUNKS = 25
+export const DEFAULT_MAX_CHUNKS_PER_PAGE = 4
 
 export class ContextBuilder {
   private defaultConfig: Required<ContextBudgetConfig>
@@ -19,14 +24,16 @@ export class ContextBuilder {
   constructor(defaultConfig?: ContextBudgetConfig) {
     const charsPerToken = defaultConfig?.charsPerToken ?? DEFAULT_CHARS_PER_TOKEN
     const maxTokens = defaultConfig?.maxTokens ?? DEFAULT_MAX_TOKENS
-    const maxCharacters = defaultConfig?.maxCharacters ?? maxTokens * charsPerToken
+    const maxCharacters = defaultConfig?.maxCharacters ?? Math.floor(maxTokens * charsPerToken)
     const maxChunks = defaultConfig?.maxChunks ?? DEFAULT_MAX_CHUNKS
+    const maxChunksPerPage = defaultConfig?.maxChunksPerPage ?? DEFAULT_MAX_CHUNKS_PER_PAGE
 
     this.defaultConfig = {
       maxTokens,
       maxCharacters,
       charsPerToken,
       maxChunks,
+      maxChunksPerPage,
     }
   }
 
@@ -35,9 +42,10 @@ export class ContextBuilder {
    *
    * 1. Filters and deduplicates candidates by chunkId.
    * 2. Respects ranking order (higher fusedScore first).
-   * 3. Greedily selects whole chunks within the character/token budget (never slicing chunks to preserve provenance).
-   * 4. Organizes selected chunks deterministically: document -> page (asc) -> chunkIndex (asc).
-   * 5. Formats structured context with stable source identifiers: [docId/page/chunkId].
+   * 3. Promotes page diversity (caps chunks per single page on initial pass).
+   * 4. Greedily selects whole chunks within the character/token budget (never slicing chunks to preserve provenance).
+   * 5. Organizes selected chunks deterministically: document -> page (asc) -> chunkIndex (asc).
+   * 6. Formats structured context with stable source identifiers: [docId/page/chunkId].
    */
   buildContext(
     candidates: HybridRetrievalCandidate[],
@@ -46,10 +54,11 @@ export class ContextBuilder {
   ): BuiltContext {
     const charsPerToken = budgetConfig?.charsPerToken ?? this.defaultConfig.charsPerToken
     const maxChunks = budgetConfig?.maxChunks ?? this.defaultConfig.maxChunks
+    const maxChunksPerPage = budgetConfig?.maxChunksPerPage ?? this.defaultConfig.maxChunksPerPage
     const effectiveMaxChars =
       budgetConfig?.maxCharacters ??
       (budgetConfig?.maxTokens !== undefined
-        ? budgetConfig.maxTokens * charsPerToken
+        ? Math.floor(budgetConfig.maxTokens * charsPerToken)
         : this.defaultConfig.maxCharacters)
 
     if (!candidates || candidates.length === 0) {
@@ -58,28 +67,19 @@ export class ContextBuilder {
 
     const seenChunkIds = new Set<string>()
     const selectedChunks: SelectedContextChunk[] = []
+    const pageChunkCounts = new Map<string, number>()
     let currentChars = 0
     let truncatedDueToBudget = false
 
-    // 1. Greedily select chunks in ranking order under budget
-    for (const candidate of candidates) {
-      if (seenChunkIds.has(candidate.chunkId)) {
-        continue
-      }
-
-      if (selectedChunks.length >= maxChunks) {
-        truncatedDueToBudget = true
-        break
-      }
-
+    const tryAddCandidate = (candidate: HybridRetrievalCandidate): boolean => {
       const contentLength = candidate.content.length
-      // Estimate extra overhead per chunk in formatted output (~80 chars for header tag)
+      // Extra overhead per chunk in formatted output (~80 chars for header tag)
       const estimatedChunkCost = contentLength + 80
 
       if (currentChars + estimatedChunkCost > effectiveMaxChars && selectedChunks.length > 0) {
-        // Stop before exceeding budget to avoid corrupting evidence boundaries
+        // Enforce hard limit: do NOT slice mid-chunk; preserve chunk/evidence integrity
         truncatedDueToBudget = true
-        break
+        return false
       }
 
       seenChunkIds.add(candidate.chunkId)
@@ -107,6 +107,35 @@ export class ContextBuilder {
       })
 
       currentChars += estimatedChunkCost
+
+      const pageKey = `${candidate.documentId}:${candidate.pageNumber}`
+      pageChunkCounts.set(pageKey, (pageChunkCounts.get(pageKey) ?? 0) + 1)
+      return true
+    }
+
+    // Select ranked candidates respecting page diversity cap
+    for (const candidate of candidates) {
+      if (seenChunkIds.has(candidate.chunkId)) {
+        continue
+      }
+
+      if (selectedChunks.length >= maxChunks) {
+        truncatedDueToBudget = true
+        break
+      }
+
+      const pageKey = `${candidate.documentId}:${candidate.pageNumber}`
+      const currentPageCount = pageChunkCounts.get(pageKey) ?? 0
+
+      if (currentPageCount >= maxChunksPerPage) {
+        // Enforce page diversity cap
+        continue
+      }
+
+      const added = tryAddCandidate(candidate)
+      if (!added) {
+        break
+      }
     }
 
     // 2. Deterministic Organization: Group by document -> pageNumber (asc) -> chunkIndex (asc)

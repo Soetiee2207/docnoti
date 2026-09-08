@@ -186,6 +186,9 @@ export async function getAppServices(): Promise<AppServices> {
 
       const contextBuilder = new ContextBuilder()
 
+      const taskRepo = new TaskRepository(db)
+      const taskExtractionService = new TaskExtractionService(taskRepo)
+
       const analysisService = new AnalysisService({
         aiProvider: () => aiProviderSelector.getActiveProvider(),
         analysisRepo,
@@ -193,6 +196,7 @@ export async function getAppServices(): Promise<AppServices> {
         pageRepo,
         hybridRetrievalService,
         contextBuilder,
+        taskExtractionService,
       })
 
       const ingestionService = new DocumentIngestionService(
@@ -200,9 +204,6 @@ export async function getAppServices(): Promise<AppServices> {
         jobRepo,
         storageService
       )
-
-      const taskRepo = new TaskRepository(db)
-      const taskExtractionService = new TaskExtractionService(taskRepo)
 
       const calendarEventRepo = new CalendarEventRepository(db)
       const internalCalendarProvider = new InternalCalendarProvider(calendarEventRepo)

@@ -81,6 +81,19 @@ export interface AnalysisRequest {
   options?: AnalysisOptions;
 }
 
+export interface ExtractedTask {
+  title: string;
+  assignee?: string;
+  deadline?: string;
+  deadlineType?: 'EXACT' | 'RELATIVE' | 'AMBIGUOUS' | 'NONE' | 'exact' | 'relative' | 'ambiguous' | 'none';
+  semanticStatus?: SemanticStatus;
+  confidence?: number;
+  evidence?: {
+    quote: string;
+    pageNumber: number;
+  };
+}
+
 export interface AnalysisResult {
   documentId: string;
   documentType: DocumentClassification;
@@ -88,6 +101,7 @@ export interface AnalysisResult {
   answer?: string;
   confidence?: SemanticStatus;
   fields: ExtractedField[];
+  tasks?: ExtractedTask[];
   evidences: AnalysisEvidence[];
   warnings: AnalysisWarning[];
   provider: string;

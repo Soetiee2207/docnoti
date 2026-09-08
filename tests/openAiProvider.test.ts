@@ -647,5 +647,137 @@ describe('P5.2 OpenAIProvider Tests', () => {
         expect(err.message).not.toContain(secretKey);
       }
     });
+
+    it('parses structured tasks array from model response and preserves evidence', async () => {
+      const secrets = new InMemorySecretsService({
+        openai_api_key: 'sk-test-key',
+      });
+
+      const mockTasksResponse = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                documentType: 'PLAN',
+                summary: 'Kế hoạch học kỳ',
+                fields: [
+                  {
+                    name: 'semester',
+                    value: 'I',
+                    semanticStatus: 'VERIFIED',
+                    confidence: 0.95,
+                    evidence: {
+                      claim: 'Học kỳ I',
+                      status: 'VERIFIED',
+                      confidence: 0.95,
+                      citations: [{ pageNumber: 1, sourceText: 'học kỳ I' }],
+                    },
+                  },
+                ],
+                tasks: [
+                  {
+                    title: 'Nhập điểm và hoàn thiện kết quả học tập',
+                    assignee: 'Giáo viên bộ môn',
+                    deadline: '15/10/2026',
+                    deadlineType: 'EXACT',
+                    semanticStatus: 'VERIFIED',
+                    confidence: 0.98,
+                    evidence: {
+                      quote: 'Nhập điểm trước ngày 15/10/2026',
+                      pageNumber: 1,
+                    },
+                  },
+                  {
+                    title: 'Kiểm tra và xác nhận kết quả từng lớp',
+                    assignee: 'Giáo viên chủ nhiệm',
+                    deadline: '18/10/2026',
+                    deadlineType: 'EXACT',
+                    semanticStatus: 'VERIFIED',
+                    confidence: 0.98,
+                    evidence: {
+                      quote: 'Kiểm tra trước ngày 18/10/2026',
+                      pageNumber: 1,
+                    },
+                  },
+                ],
+                evidences: [],
+              }),
+            },
+          },
+        ],
+      };
+
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(mockTasksResponse), { status: 200 })
+      );
+
+      const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch });
+      const result = await provider.analyze(sampleRequest);
+
+      // Verify tasks are present and not empty
+      expect(result.tasks).toBeDefined();
+      expect(result.tasks!.length).toBe(2);
+      expect(result.tasks![0].title).toBe('Nhập điểm và hoàn thiện kết quả học tập');
+      expect(result.tasks![0].assignee).toBe('Giáo viên bộ môn');
+      expect(result.tasks![0].deadline).toBe('15/10/2026');
+      expect(result.tasks![0].deadlineType).toBe('EXACT');
+      expect(result.tasks![0].evidence?.quote).toBe('Nhập điểm trước ngày 15/10/2026');
+
+      expect(result.tasks![1].title).toBe('Kiểm tra và xác nhận kết quả từng lớp');
+      expect(result.tasks![1].assignee).toBe('Giáo viên chủ nhiệm');
+
+      // Verify semester was normalized from "I" to "Học kỳ I"
+      const semesterField = result.fields.find((f) => f.name === 'semester');
+      expect(semesterField?.value).toBe('Học kỳ I');
+    });
+
+    it('normalizes various semester representations (1, HKI, HK 1, Semester 1) to Học kỳ I and Học kỳ II', async () => {
+      const secrets = new InMemorySecretsService({
+        openai_api_key: 'sk-test-key',
+      });
+
+      for (const raw of ['1', 'HKI', 'Học kỳ 1', 'SEMESTER 1']) {
+        const mockResp = {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  documentType: 'PLAN',
+                  summary: 'Kế hoạch',
+                  fields: [{ name: 'semester', value: raw, semanticStatus: 'VERIFIED', confidence: 0.9 }],
+                  evidences: [],
+                }),
+              },
+            },
+          ],
+        };
+        const mockFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockResp), { status: 200 }));
+        const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch });
+        const result = await provider.analyze(sampleRequest);
+        expect(result.fields[0].value).toBe('Học kỳ I');
+      }
+
+      for (const raw of ['2', 'II', 'HKII', 'Học kỳ 2']) {
+        const mockResp = {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  documentType: 'PLAN',
+                  summary: 'Kế hoạch',
+                  fields: [{ name: 'semester', value: raw, semanticStatus: 'VERIFIED', confidence: 0.9 }],
+                  evidences: [],
+                }),
+              },
+            },
+          ],
+        };
+        const mockFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockResp), { status: 200 }));
+        const provider = new OpenAIProvider(secrets, { fetchFn: mockFetch });
+        const result = await provider.analyze(sampleRequest);
+        expect(result.fields[0].value).toBe('Học kỳ II');
+      }
+    });
   });
 });
+

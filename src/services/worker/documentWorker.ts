@@ -481,8 +481,12 @@ export class DocumentWorker {
     // Step 2: Execute analysis pipeline
     const analysisRes = await this.analysisService.analyzeDocument(documentId)
 
-    // Step 2.1: Extract candidate tasks idempotently if taskExtractionService is available
-    if (this.taskExtractionService && analysisRes?.result) {
+    // Step 2.1: Extract candidate tasks idempotently if not already handled by AnalysisService
+    if (
+      this.taskExtractionService &&
+      analysisRes?.result &&
+      !this.analysisService.hasTaskExtractionService?.()
+    ) {
       try {
         await this.taskExtractionService.extractAndSaveCandidates(
           documentId,

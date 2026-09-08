@@ -11,6 +11,10 @@ import {
   type SemanticStatus,
   AIError,
 } from './types';
+import {
+  estimateTokenCount,
+  HARD_MAX_REQUEST_PROMPT_TOKENS,
+} from './context';
 
 export interface OpenAIProviderConfig {
   apiKeySecretKey?: string;
@@ -117,7 +121,7 @@ Document Classification Types (conform to SPEC):
 
 You MUST respond strictly with valid JSON conforming to the following structure:
 {
-  "documentType": "REPORT",
+  "documentType": "PLAN",
   "summary": "Comprehensive, well-structured summary of the document's content, key points, and context.",
   "fields": [
     {
@@ -139,6 +143,20 @@ You MUST respond strictly with valid JSON conforming to the following structure:
       }
     }
   ],
+  "tasks": [
+    {
+      "title": "Tên công việc / nhiệm vụ cụ thể",
+      "assignee": "Người phụ trách / Đơn vị thực hiện nếu tài liệu nêu rõ, hoặc null",
+      "deadline": "Hạn chót nếu có (ví dụ: '15/10/2026', '2026-10-15')",
+      "deadlineType": "EXACT" | "RELATIVE" | "AMBIGUOUS" | "NONE",
+      "semanticStatus": "VERIFIED" | "INFERRED" | "UNCERTAIN",
+      "confidence": 0.95,
+      "evidence": {
+        "quote": "EXACT verbatim quote from the page text containing the task and deadline",
+        "pageNumber": 1
+      }
+    }
+  ],
   "evidences": [
     {
       "claim": "Key document fact or verification point",
@@ -156,9 +174,26 @@ You MUST respond strictly with valid JSON conforming to the following structure:
   "warnings": []
 }
 
+CRITICAL RULES FOR TASKS & DEADLINE EXTRACTION:
+1. If the document contains any tasks, milestones, action items, work schedules, or deadlines, extract EACH task individually into the "tasks" array.
+2. Schedule and Plan tables: READ EVERY ROW. Each row that specifies a task/action + responsible person/department + deadline MUST become a separate object in "tasks".
+3. DO NOT merge or collapse multiple rows or tasks into a single general deadline field.
+4. DO NOT put tasks into the "fields" array as workaround fields (e.g. NEVER do { name: "Nhiệm vụ: ...", value: "..." } in fields). Tasks MUST be structured in the "tasks" array.
+5. "assignee": Extract if explicitly stated in the text (e.g. "Giáo viên bộ môn", "Giáo viên chủ nhiệm", "Phòng Đào tạo"). If not specified, leave null or omit. DO NOT speculate or invent assignees.
+6. "deadline": Extract exact date/timeframe as stated in the text. DO NOT fabricate or guess dates.
+7. "deadlineType" classification:
+   - "EXACT": for specific calendar dates (e.g. "15/10/2026", "2026-10-15", "ngày 20 tháng 10 năm 2026").
+   - "RELATIVE": for relative timeframes (e.g. "sau 5 ngày kể từ ngày ký", "trong vòng 1 tuần").
+   - "AMBIGUOUS": for unclear or non-specific dates (e.g. "cuối tháng", "sớm nhất có thể").
+   - "NONE": if no deadline is mentioned.
+8. Ground each task with verbatim "evidence" containing "quote" and "pageNumber".
+
+METADATA NORMALIZATION RULES:
+- If extracting a "semester" (or "học kỳ") field, normalize "I", "1", "HKI", "Học kỳ 1" to "Học kỳ I"; and "II", "2", "HKII", "Học kỳ 2" to "Học kỳ II".
+
 CRITICAL RULES FOR CITATIONS:
 1. Every citation MUST have an accurate pageNumber.
-2. The sourceText MUST be an EXACT, VERBATIM substring copied directly from that page's text.
+2. The sourceText and quote MUST be an EXACT, VERBATIM substring copied directly from that page's text.
 3. NEVER fabricate, paraphrase, or hallucinate quotes. If a fact cannot be quoted verbatim, mark status as "INFERRED" or "UNCERTAIN" with appropriate reasoning.
 4. Output pure JSON only.`;
 
@@ -279,6 +314,7 @@ export class OpenAIProvider implements AIProvider {
     documentType: string;
     summary: string;
     fields: unknown[];
+    tasks?: unknown[];
     evidences: unknown[];
     warnings?: unknown[];
   } {
@@ -304,6 +340,65 @@ export class OpenAIProvider implements AIProvider {
 
     if (!Array.isArray(obj.fields)) {
       obj.fields = [];
+    } else {
+      // Normalize semester field if present
+      for (const f of obj.fields) {
+        if (f && typeof f === 'object') {
+          const fieldObj = f as Record<string, unknown>;
+          const name = String(fieldObj.name || '').trim().toLowerCase();
+          if (
+            name === 'semester' ||
+            name === 'hoc_ky' ||
+            name === 'học kỳ' ||
+            name === 'hoc ky' ||
+            name === 'học kì' ||
+            name === 'hoc ki'
+          ) {
+            const rawVal = String(fieldObj.value ?? '').trim();
+            const upper = rawVal.toUpperCase();
+            if (
+              upper === 'I' ||
+              upper === '1' ||
+              upper === 'HKI' ||
+              upper === 'HK 1' ||
+              upper === 'HK I' ||
+              upper === 'HỌC KỲ I' ||
+              upper === 'HỌC KỲ 1' ||
+              upper === 'HỌC KÌ I' ||
+              upper === 'HỌC KÌ 1' ||
+              upper === 'SEMESTER 1' ||
+              upper === 'SEMESTER I'
+            ) {
+              fieldObj.value = 'Học kỳ I';
+            } else if (
+              upper === 'II' ||
+              upper === '2' ||
+              upper === 'HKII' ||
+              upper === 'HK 2' ||
+              upper === 'HK II' ||
+              upper === 'HỌC KỲ II' ||
+              upper === 'HỌC KỲ 2' ||
+              upper === 'HỌC KÌ II' ||
+              upper === 'HỌC KÌ 2' ||
+              upper === 'SEMESTER 2' ||
+              upper === 'SEMESTER II'
+            ) {
+              fieldObj.value = 'Học kỳ II';
+            }
+          }
+        }
+      }
+    }
+
+    if (obj.tasks !== undefined) {
+      if (!Array.isArray(obj.tasks)) {
+        obj.tasks = [];
+      } else {
+        // Validate structured task objects
+        obj.tasks = obj.tasks.filter((t: any) => {
+          return t && typeof t === 'object' && typeof t.title === 'string' && t.title.trim().length > 0;
+        });
+      }
     }
 
     if (!Array.isArray(obj.evidences)) {
@@ -321,6 +416,18 @@ export class OpenAIProvider implements AIProvider {
 
     const userMessage = this.buildUserMessage(request);
     const systemPrompt = request.options?.query ? QA_SYSTEM_PROMPT : FULL_SUMMARY_SYSTEM_PROMPT;
+
+    // Pre-flight prompt token budget guardrail: halt oversized payloads locally without sending to OpenAI
+    const estimatedPromptTokens =
+      estimateTokenCount(systemPrompt) + estimateTokenCount(userMessage);
+    if (estimatedPromptTokens > HARD_MAX_REQUEST_PROMPT_TOKENS) {
+      throw new AIError(
+        'Ngữ cảnh tài liệu quá lớn. Hệ thống đã tự động thu gọn các đoạn liên quan.',
+        'CONTEXT_LENGTH_EXCEEDED',
+        this.id,
+        false
+      );
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs);
@@ -367,11 +474,19 @@ export class OpenAIProvider implements AIProvider {
       }
 
       if (res.status === 429) {
+        // Do NOT retry oversized requests that breached token limit (TPM).
+        // Only transient rate limits (RPM / concurrency) should be eligible for retry.
+        const isTokenLimitExceeded =
+          errorText.includes('rate_limit_exceeded') ||
+          errorText.includes('tokens per min') ||
+          errorText.includes('TPM') ||
+          errorText.includes('Requested:');
+
         throw new AIError(
           `OpenAI rate limit exceeded (${res.status}): ${errorText}`,
           'RATE_LIMIT',
           this.id,
-          true
+          !isTokenLimitExceeded
         );
       }
 
@@ -455,6 +570,7 @@ export class OpenAIProvider implements AIProvider {
       answer: (parsed as any).answer || parsed.summary,
       confidence,
       fields: (parsed.fields as any) || [],
+      tasks: (parsed as any).tasks || undefined,
       evidences: (parsed.evidences as any) || [],
       warnings: (parsed.warnings as any) || [],
       provider: this.metadata.providerId,

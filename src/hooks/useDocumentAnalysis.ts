@@ -22,7 +22,7 @@ export interface UseDocumentAnalysisResult {
   askQuestion: (customQuestion?: string) => Promise<void>
   fullSummary: AnalysisResult | null
   loadingSummary: boolean
-  loadFullSummary: () => Promise<void>
+  loadFullSummary: (forceRefresh?: boolean) => Promise<void>
   reloadDocument: () => Promise<void>
   reprocessDocument: () => Promise<void>
   reprocessing: boolean
@@ -145,42 +145,46 @@ export function useDocumentAnalysis(documentId: string): UseDocumentAnalysisResu
     [documentId, question, analyzing]
   )
 
-  const loadFullSummary = useCallback(async () => {
-    if (loadingSummary) return
-    setLoadingSummary(true)
-    setError(null)
-    try {
-      const services = await getAppServices()
+  const loadFullSummary = useCallback(
+    async (forceRefresh = false) => {
+      if (loadingSummary) return
+      setLoadingSummary(true)
+      setError(null)
+      try {
+        const services = await getAppServices()
 
-      // First check active analysis in repo
-      if (services.analysisRepo) {
-        const active = await services.analysisRepo.getActiveAnalysis(documentId)
-        if (active && active.rawResult) {
-          try {
-            setFullSummary(JSON.parse(active.rawResult) as AnalysisResult)
-            return
-          } catch {
-            // continue to generate if corrupt
+        // First check active analysis in repo if not forcing refresh
+        if (!forceRefresh && services.analysisRepo) {
+          const active = await services.analysisRepo.getActiveAnalysis(documentId)
+          if (active && active.rawResult) {
+            try {
+              setFullSummary(JSON.parse(active.rawResult) as AnalysisResult)
+              return
+            } catch {
+              // continue to generate if corrupt
+            }
           }
         }
-      }
 
-      // Generate full summary if not present
-      const { result } = await services.analysisService.analyzeDocument(documentId, {
-        mode: "full",
-      })
-      setFullSummary(result)
-    } catch (err) {
-      console.error("Failed to generate full summary:", err)
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Không thể khởi tạo bản tóm tắt toàn bộ tài liệu."
-      )
-    } finally {
-      setLoadingSummary(false)
-    }
-  }, [documentId, loadingSummary])
+        // Generate full summary if not present or forced
+        const { result } = await services.analysisService.analyzeDocument(documentId, {
+          mode: "full",
+          forceRefresh,
+        })
+        setFullSummary(result)
+      } catch (err) {
+        console.error("Failed to generate full summary:", err)
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Không thể khởi tạo bản tóm tắt toàn bộ tài liệu."
+        )
+      } finally {
+        setLoadingSummary(false)
+      }
+    },
+    [documentId, loadingSummary]
+  )
 
   const reprocessDocument = useCallback(async () => {
     if (!documentId) return

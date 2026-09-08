@@ -1,5 +1,5 @@
 import type { AnalysisResult, ExtractedField, AnalysisEvidence } from "@/services/ai/types"
-import type { TaskCandidate, TaskItem } from "./types"
+import type { TaskCandidate, TaskItem, DeadlineType } from "./types"
 import { parseDeadline } from "./deadlineParser"
 import type { TaskRepository } from "@/repositories/taskRepository"
 import type { NewTaskRecord, TaskRecord } from "@/db/schema"
@@ -73,7 +73,71 @@ export class TaskExtractionService {
       "pay",
     ]
 
-    // 1. Extract candidates from structured fields
+    // 1. Prioritize structured tasks from AI response if available
+    if (result.tasks && result.tasks.length > 0) {
+      for (const t of result.tasks) {
+        if (!t.title || !t.title.trim()) continue
+        const title = t.title.trim()
+
+        const rawDeadlineStr = t.deadline ? String(t.deadline).trim() : null
+        let chosenDeadline = parseDeadline(rawDeadlineStr)
+
+        if (chosenDeadline.type === "none" && t.deadlineType) {
+          const lower = t.deadlineType.toLowerCase() as DeadlineType
+          if (["exact", "relative", "ambiguous", "none"].includes(lower)) {
+            chosenDeadline = {
+              type: lower,
+              raw: rawDeadlineStr,
+              normalizedDate: null,
+            }
+          }
+        }
+
+        const assignee = t.assignee ? t.assignee.trim() : null
+        const description = assignee ? `Người phụ trách: ${assignee}` : null
+
+        let evidence: AnalysisEvidence | null = null
+        if (t.evidence && t.evidence.quote) {
+          evidence = {
+            claim: title,
+            status: t.semanticStatus ?? "VERIFIED",
+            confidence: t.confidence ?? 0.95,
+            citations: [
+              {
+                pageNumber: t.evidence.pageNumber || 1,
+                sourceText: t.evidence.quote,
+              },
+            ],
+            reasoning: assignee ? `Người phụ trách: ${assignee}` : undefined,
+          }
+        }
+
+        const signature = `${title.toLowerCase()}_${chosenDeadline.raw ?? ""}`
+        if (!seenSignatures.has(signature)) {
+          seenSignatures.add(signature)
+          candidates.push({
+            documentId,
+            analysisId: analysisId ?? null,
+            analysisVersion: analysisVersion ?? null,
+            title,
+            description,
+            status: "pending",
+            deadlineType: chosenDeadline.type,
+            rawDeadline: chosenDeadline.raw,
+            deadlineDate: chosenDeadline.normalizedDate ?? null,
+            semanticStatus: t.semanticStatus ?? (evidence?.status ?? "VERIFIED"),
+            confidence: t.confidence ?? (evidence?.confidence ?? 0.95),
+            evidence,
+          })
+        }
+      }
+
+      if (candidates.length > 0) {
+        return candidates
+      }
+    }
+
+    // 2. Fallback: Extract candidates from structured fields
     if (result.fields && result.fields.length > 0) {
       for (const field of result.fields) {
         if (!field.name || field.value === null || field.value === undefined) continue

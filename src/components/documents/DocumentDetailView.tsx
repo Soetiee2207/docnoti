@@ -56,7 +56,13 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
     pendingCount,
     confirmTask,
     rejectTask,
+    reloadTasks,
   } = useTasks({ documentId })
+
+  const handleGenerateSummary = async (forceRefresh = false) => {
+    await loadFullSummary(forceRefresh)
+    await reloadTasks()
+  }
 
   return (
     <div className="space-y-4">
@@ -119,7 +125,7 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
             onClick={() => {
               setActiveTab("summary")
               if (!fullSummary && !loadingSummary) {
-                void loadFullSummary()
+                void handleGenerateSummary(false)
               }
             }}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors ${
@@ -133,7 +139,10 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("tasks")}
+            onClick={() => {
+              setActiveTab("tasks")
+              void reloadTasks()
+            }}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors ${
               activeTab === "tasks"
                 ? "bg-background text-foreground shadow-xs"
@@ -186,7 +195,7 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
             <DocumentFullSummaryView
               summary={fullSummary}
               loading={loadingSummary}
-              onGenerate={loadFullSummary}
+              onGenerate={() => handleGenerateSummary(true)}
               onNavigateToPage={setCurrentPage}
             />
           )}

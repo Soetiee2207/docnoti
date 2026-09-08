@@ -8,6 +8,7 @@ import type {
   ProviderAvailability,
   ExtractedField,
   AnalysisEvidence,
+  ExtractedTask,
 } from './types';
 
 export interface MockAIProviderOptions {
@@ -16,6 +17,7 @@ export interface MockAIProviderOptions {
   simulatedClassification?: DocumentClassification;
   simulatedSummary?: string;
   simulatedFields?: ExtractedField[];
+  simulatedTasks?: ExtractedTask[];
   simulatedEvidences?: AnalysisEvidence[];
   injectInvalidEvidence?: boolean;
 }
@@ -121,6 +123,7 @@ export class MockAIProvider implements AIProvider {
       documentType: classification,
       summary,
       fields,
+      tasks: this.options.simulatedTasks,
       evidences,
       warnings: [],
       provider: this.metadata.providerId,
