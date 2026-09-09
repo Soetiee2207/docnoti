@@ -66,18 +66,7 @@ fn compute_sha256(path: &Path) -> Result<String, String> {
 }
 
 pub fn get_storage_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let base_dir = app
-        .path()
-        .app_local_data_dir()
-        .or_else(|_| app.path().app_data_dir())
-        .map_err(|e| format!("Failed to resolve application data directory: {e}"))?;
-
-    let docs_dir = base_dir.join("documents");
-    if !docs_dir.exists() {
-        fs::create_dir_all(&docs_dir)
-            .map_err(|e| format!("Failed to create storage directory: {e}"))?;
-    }
-    Ok(docs_dir)
+    crate::storage_config::get_documents_dir(app)
 }
 
 #[tauri::command]
@@ -120,10 +109,11 @@ pub fn import_pdf_file(app: AppHandle, source_path: String) -> Result<ImportedFi
 #[tauri::command]
 pub fn delete_stored_file(app: AppHandle, storage_path: String) -> Result<(), String> {
     let storage_dir = get_storage_dir(&app)?;
+    let default_dir = crate::storage_config::get_default_base_dir(&app).join("documents");
     let target_path = Path::new(&storage_path);
 
-    // Security guard: ensure target is strictly inside managed storage directory
-    if !target_path.starts_with(&storage_dir) {
+    // Security guard: ensure target is strictly inside managed storage directory (configured or default)
+    if !target_path.starts_with(&storage_dir) && !target_path.starts_with(&default_dir) {
         return Err("Security violation: target path is not within managed storage".to_string());
     }
 
@@ -138,10 +128,11 @@ pub fn delete_stored_file(app: AppHandle, storage_path: String) -> Result<(), St
 #[tauri::command]
 pub fn read_stored_file(app: AppHandle, storage_path: String) -> Result<Vec<u8>, String> {
     let storage_dir = get_storage_dir(&app)?;
+    let default_dir = crate::storage_config::get_default_base_dir(&app).join("documents");
     let target_path = Path::new(&storage_path);
 
-    // Security guard: ensure target is strictly inside managed storage directory
-    if !target_path.starts_with(&storage_dir) {
+    // Security guard: ensure target is strictly inside managed storage directory (configured or default)
+    if !target_path.starts_with(&storage_dir) && !target_path.starts_with(&default_dir) {
         return Err("Security violation: target path is not within managed storage".to_string());
     }
 

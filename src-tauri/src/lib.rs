@@ -1,9 +1,10 @@
-mod db;
-mod storage;
-mod ocr;
 mod autostart;
-mod tray;
+mod db;
+mod ocr;
 mod secrets;
+mod storage;
+mod storage_config;
+mod tray;
 
 use rusqlite::Connection;
 use std::fs;
@@ -48,7 +49,9 @@ pub fn run() {
                     .expect("failed to create app data directory");
             }
 
-            let db_path = base_dir.join("docnoti.db");
+            let config = storage_config::load_storage_config(app.handle());
+            let db_dir = storage_config::resolve_database_dir(app.handle(), &config);
+            let db_path = db_dir.join("docnoti.db");
             let conn = Connection::open(&db_path)
                 .unwrap_or_else(|e| panic!("failed to open sqlite database at {}: {e}", db_path.display()));
 
@@ -57,6 +60,7 @@ pub fn run() {
             let _ = conn.pragma_update(None, "foreign_keys", "ON");
 
             app.manage(db::DbState(Mutex::new(conn)));
+            app.manage(storage_config::StorageConfigState(Mutex::new(config)));
 
             Ok(())
         })
@@ -80,7 +84,12 @@ pub fn run() {
             secrets::get_secret,
             secrets::set_secret,
             secrets::delete_secret,
-            secrets::has_secret
+            secrets::has_secret,
+            storage_config::get_storage_config,
+            storage_config::get_resolved_storage_paths,
+            storage_config::validate_storage_dir,
+            storage_config::update_storage_dir,
+            storage_config::reset_storage_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

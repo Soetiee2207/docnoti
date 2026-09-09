@@ -1,8 +1,23 @@
 import { useState } from "react"
-import { Folder, HardDrive, Cpu, Bell, Power, Key, CheckCircle2, RefreshCw } from "lucide-react"
+import {
+  Folder,
+  HardDrive,
+  Cpu,
+  Bell,
+  Power,
+  Key,
+  CheckCircle2,
+  RefreshCw,
+  RotateCcw,
+  AlertTriangle,
+  FileText,
+  Database,
+  Terminal,
+} from "lucide-react"
 import { useAutostart } from "@/hooks/useAutostart"
 import { useSecrets } from "@/hooks/useSecrets"
 import { useAiConfig } from "@/hooks/useAiConfig"
+import { useStorageConfig, type StorageDirKey } from "@/hooks/useStorageConfig"
 
 export function SettingsView() {
   const { autostartEnabled, daemonStatus, loading, error, setAutostart } = useAutostart()
@@ -21,7 +36,57 @@ export function SettingsView() {
     setCloudEnabled,
     testConnection,
   } = useAiConfig()
+  const {
+    paths,
+    loading: storageLoading,
+    error: storageError,
+    updateDir,
+    resetToDefaults,
+    selectDirectory,
+  } = useStorageConfig()
+
   const [apiKeyInput, setApiKeyInput] = useState("")
+  const [storageFeedback, setStorageFeedback] = useState<{
+    type: "success" | "error"
+    message: string
+  } | null>(null)
+
+  const handleChangePath = async (key: StorageDirKey, title: string) => {
+    try {
+      setStorageFeedback(null)
+      const selected = await selectDirectory(title)
+      if (!selected) return
+
+      await updateDir(key, selected)
+      setStorageFeedback({
+        type: "success",
+        message: key === "database_dir"
+          ? "Đã lưu đường dẫn database mới. Hãy khởi động lại ứng dụng để áp dụng."
+          : "Đã cập nhật đường dẫn lưu trữ thành công.",
+      })
+    } catch (e) {
+      setStorageFeedback({
+        type: "error",
+        message: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  const handleResetPath = async (key: StorageDirKey) => {
+    try {
+      setStorageFeedback(null)
+      await updateDir(key, null)
+      setStorageFeedback({
+        type: "success",
+        message: "Đã khôi phục đường dẫn về mặc định.",
+      })
+    } catch (e) {
+      setStorageFeedback({
+        type: "error",
+        message: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -85,25 +150,256 @@ export function SettingsView() {
         </p>
       </div>
 
-      {/* Local Storage Section */}
+      {/* Local Storage & System Paths Section */}
       <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
-            <HardDrive className="size-4" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+              <HardDrive className="size-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-card-foreground">Lưu trữ cục bộ & Đường dẫn hệ thống</h2>
+              <p className="text-xs text-muted-foreground">Tùy chỉnh nơi lưu trữ tài liệu, cơ sở dữ liệu SQLite, file tạm OCR và logs</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-sm font-semibold text-card-foreground">Lưu trữ cục bộ</h2>
-            <p className="text-xs text-muted-foreground">Tất cả tài liệu và cơ sở dữ liệu được lưu trên máy của bạn</p>
-          </div>
+          {(paths?.isCustomDocumentsDir || paths?.isCustomDatabaseDir || paths?.isCustomTempOcrDir || paths?.isCustomLogDir) && (
+            <button
+              type="button"
+              disabled={storageLoading}
+              onClick={async () => {
+                try {
+                  setStorageFeedback(null)
+                  await resetToDefaults()
+                  setStorageFeedback({ type: "success", message: "Đã khôi phục toàn bộ đường dẫn về mặc định" })
+                } catch (e) {
+                  setStorageFeedback({ type: "error", message: e instanceof Error ? e.message : String(e) })
+                }
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 cursor-pointer"
+              title="Khôi phục tất cả đường dẫn về mặc định"
+            >
+              <RotateCcw className="size-3" />
+              <span>Khôi phục mặc định</span>
+            </button>
+          )}
         </div>
-        <div className="rounded-lg border border-border bg-background p-3 text-xs space-y-1.5">
-          <div className="flex justify-between text-muted-foreground">
-            <span>Thư mục dữ liệu:</span>
-            <code className="text-foreground font-mono">data/local_storage</code>
+
+        {storageError && (
+          <div className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
+            {storageError}
           </div>
-          <div className="flex justify-between text-muted-foreground">
-            <span>Cơ sở dữ liệu:</span>
-            <span className="text-foreground">SQLite (Local-first)</span>
+        )}
+
+        {storageFeedback && (
+          <div
+            className={`rounded-lg p-3 text-xs border ${
+              storageFeedback.type === "success"
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                : "bg-destructive/10 text-destructive border-destructive/20"
+            }`}
+          >
+            {storageFeedback.message}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {/* 1. Documents Directory */}
+          <div className="rounded-lg border border-border bg-background p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="size-4 text-primary" />
+                <span className="font-medium text-foreground">Thư mục tài liệu PDF đã lưu</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                paths?.isCustomDocumentsDir
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {paths?.isCustomDocumentsDir ? "Tùy chỉnh" : "Mặc định"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={paths?.documentsDir ?? "Đang tải..."}
+                className="flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-[11px] text-foreground select-all focus:outline-none"
+                title={paths?.documentsDir}
+              />
+              <button
+                type="button"
+                disabled={storageLoading}
+                onClick={() => void handleChangePath("documents_dir", "Chọn thư mục lưu tài liệu PDF")}
+                className="rounded-md bg-secondary border border-border px-2.5 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 cursor-pointer shrink-0 flex items-center gap-1"
+              >
+                <Folder className="size-3.5" />
+                <span>Thay đổi</span>
+              </button>
+              {paths?.isCustomDocumentsDir && (
+                <button
+                  type="button"
+                  disabled={storageLoading}
+                  onClick={() => void handleResetPath("documents_dir")}
+                  className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 cursor-pointer shrink-0"
+                  title="Khôi phục về mặc định"
+                >
+                  <RotateCcw className="size-3" />
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Nơi lưu trữ các file PDF gốc được nhập vào docnoti. Lưu ý: File đã import trước đó sẽ nằm ở thư mục cũ.
+            </p>
+          </div>
+
+          {/* 2. Database Directory */}
+          <div className="rounded-lg border border-border bg-background p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="size-4 text-primary" />
+                <span className="font-medium text-foreground">Thư mục Cơ sở dữ liệu SQLite (docnoti.db & vectors)</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                paths?.isCustomDatabaseDir
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {paths?.isCustomDatabaseDir ? "Tùy chỉnh" : "Mặc định"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={paths?.databaseDir ?? "Đang tải..."}
+                className="flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-[11px] text-foreground select-all focus:outline-none"
+                title={paths?.databaseDir}
+              />
+              <button
+                type="button"
+                disabled={storageLoading}
+                onClick={() => void handleChangePath("database_dir", "Chọn thư mục lưu cơ sở dữ liệu docnoti.db")}
+                className="rounded-md bg-secondary border border-border px-2.5 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 cursor-pointer shrink-0 flex items-center gap-1"
+              >
+                <Folder className="size-3.5" />
+                <span>Thay đổi</span>
+              </button>
+              {paths?.isCustomDatabaseDir && (
+                <button
+                  type="button"
+                  disabled={storageLoading}
+                  onClick={() => void handleResetPath("database_dir")}
+                  className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 cursor-pointer shrink-0"
+                  title="Khôi phục về mặc định"
+                >
+                  <RotateCcw className="size-3" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-start gap-1.5 rounded bg-amber-500/10 p-2 text-[11px] text-amber-700 dark:text-amber-400 border border-amber-500/20">
+              <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Lưu ý quan trọng:</strong> Thay đổi thư mục cơ sở dữ liệu sẽ có hiệu lực sau khi khởi động lại ứng dụng. Dữ liệu từ file database cũ sẽ không tự động di chuyển sang thư mục mới.
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Temp OCR Directory */}
+          <div className="rounded-lg border border-border bg-background p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Folder className="size-4 text-primary" />
+                <span className="font-medium text-foreground">Thư mục file tạm OCR</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                paths?.isCustomTempOcrDir
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {paths?.isCustomTempOcrDir ? "Tùy chỉnh" : "Mặc định"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={paths?.tempOcrDir ?? "Đang tải..."}
+                className="flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-[11px] text-foreground select-all focus:outline-none"
+                title={paths?.tempOcrDir}
+              />
+              <button
+                type="button"
+                disabled={storageLoading}
+                onClick={() => void handleChangePath("temp_ocr_dir", "Chọn thư mục chứa file tạm OCR")}
+                className="rounded-md bg-secondary border border-border px-2.5 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 cursor-pointer shrink-0 flex items-center gap-1"
+              >
+                <Folder className="size-3.5" />
+                <span>Thay đổi</span>
+              </button>
+              {paths?.isCustomTempOcrDir && (
+                <button
+                  type="button"
+                  disabled={storageLoading}
+                  onClick={() => void handleResetPath("temp_ocr_dir")}
+                  className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 cursor-pointer shrink-0"
+                  title="Khôi phục về mặc định"
+                >
+                  <RotateCcw className="size-3" />
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Nơi lưu các file ảnh phân giải cao tạm thời trong khi PaddleOCR trích xuất chữ viết tay/scan. Tự động dọn dẹp sau khi trích xuất.
+            </p>
+          </div>
+
+          {/* 4. Logs Directory */}
+          <div className="rounded-lg border border-border bg-background p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Terminal className="size-4 text-primary" />
+                <span className="font-medium text-foreground">Thư mục nhật ký (Logs)</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                paths?.isCustomLogDir
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {paths?.isCustomLogDir ? "Tùy chỉnh" : "Mặc định"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={paths?.logDir ?? "Đang tải..."}
+                className="flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-[11px] text-foreground select-all focus:outline-none"
+                title={paths?.logDir}
+              />
+              <button
+                type="button"
+                disabled={storageLoading}
+                onClick={() => void handleChangePath("log_dir", "Chọn thư mục lưu log hệ thống")}
+                className="rounded-md bg-secondary border border-border px-2.5 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 cursor-pointer shrink-0 flex items-center gap-1"
+              >
+                <Folder className="size-3.5" />
+                <span>Thay đổi</span>
+              </button>
+              {paths?.isCustomLogDir && (
+                <button
+                  type="button"
+                  disabled={storageLoading}
+                  onClick={() => void handleResetPath("log_dir")}
+                  className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 cursor-pointer shrink-0"
+                  title="Khôi phục về mặc định"
+                >
+                  <RotateCcw className="size-3" />
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Nơi lưu trữ file log hoạt động của docnoti phục vụ việc theo dõi và gỡ lỗi.
+            </p>
           </div>
         </div>
       </div>

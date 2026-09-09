@@ -22,17 +22,7 @@ pub fn run_ocr_on_image(app: AppHandle, image_bytes: Vec<u8>) -> Result<String, 
         return Err("Dữ liệu ảnh rỗng, không thể chạy OCR.".to_string());
     }
 
-    let base_dir = app
-        .path()
-        .app_local_data_dir()
-        .or_else(|_| app.path().app_data_dir())
-        .map_err(|e| format!("Không thể lấy đường dẫn app data: {e}"))?;
-
-    let temp_dir = base_dir.join("temp_ocr");
-    if !temp_dir.exists() {
-        fs::create_dir_all(&temp_dir)
-            .map_err(|e| format!("Không thể tạo thư mục tạm OCR: {e}"))?;
-    }
+    let temp_dir = crate::storage_config::get_temp_ocr_dir(&app)?;
 
     let temp_file = temp_dir.join(format!("{}.png", Uuid::new_v4()));
     fs::write(&temp_file, &image_bytes)
