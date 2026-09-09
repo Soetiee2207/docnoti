@@ -463,36 +463,31 @@ export class AnalysisService {
           ? crypto.randomUUID()
           : `analysis-${documentId}-v${nextVersion}-${Date.now()}`;
 
-      savedRecord = await this.analysisRepo.saveAnalysis({
-        id: analysisId,
-        documentId,
-        version: nextVersion,
-        isActive: 1,
-        status: 'completed',
-        provider: validatedResult.provider,
-        model: validatedResult.model,
-        documentType: validatedResult.documentType,
-        summary: validatedResult.summary,
-        rawResult: JSON.stringify(validatedResult),
-        promptTokens: validatedResult.usage?.promptTokens,
-        completionTokens: validatedResult.usage?.completionTokens,
-        totalTokens: validatedResult.usage?.totalTokens,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      // Q&A / Retrieval analyses are saved for query history and token tracking,
+      // but must NOT overwrite the active full summary (markActive = false)
+      savedRecord = await this.analysisRepo.saveAnalysis(
+        {
+          id: analysisId,
+          documentId,
+          version: nextVersion,
+          isActive: 0,
+          status: 'completed',
+          provider: validatedResult.provider,
+          model: validatedResult.model,
+          documentType: validatedResult.documentType,
+          summary: validatedResult.summary,
+          rawResult: JSON.stringify(validatedResult),
+          promptTokens: validatedResult.usage?.promptTokens,
+          completionTokens: validatedResult.usage?.completionTokens,
+          totalTokens: validatedResult.usage?.totalTokens,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        false // markActive = false: do not replace active full document summary
+      );
 
-      if (this.taskExtractionService) {
-        try {
-          await this.taskExtractionService.extractAndSaveCandidates(
-            documentId,
-            savedRecord.id,
-            savedRecord.version,
-            validatedResult
-          );
-        } catch (extractErr) {
-          console.warn(`[AnalysisService] Task candidate extraction warning for document ${documentId}:`, extractErr);
-        }
-      }
+      // Boundary Contract: Q&A flow strictly produces answers & evidence;
+      // it must NEVER call TaskExtractionService or create tasks/reminders/calendar events.
     }
 
     return {

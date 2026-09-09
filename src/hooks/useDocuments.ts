@@ -158,6 +158,23 @@ export function useDocuments() {
     [refresh]
   )
 
+  const deleteDocument = useCallback(
+    async (documentId: string): Promise<boolean> => {
+      try {
+        setError(null)
+        const services = await getAppServices()
+        const success = await services.ingestionService.deleteDocument(documentId)
+        await refresh()
+        return success
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        setError(msg)
+        throw err
+      }
+    },
+    [refresh]
+  )
+
   return {
     documents,
     loading,
@@ -166,6 +183,7 @@ export function useDocuments() {
     processing,
     refresh,
     reprocessDocument,
+    deleteDocument,
     processPendingJobs,
     importFilePaths,
     openPickerAndImport,

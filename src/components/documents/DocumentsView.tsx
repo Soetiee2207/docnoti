@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Sparkles,
   RotateCw,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useDocuments } from "@/hooks/useDocuments"
@@ -100,6 +101,7 @@ export function DocumentsView({
     processing,
     refresh,
     reprocessDocument,
+    deleteDocument,
     openPickerAndImport,
     importFilePaths,
   } = useDocuments()
@@ -107,6 +109,8 @@ export function DocumentsView({
   const [filterText, setFilterText] = useState(searchQuery)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
+  const [deletingDoc, setDeletingDoc] = useState<DocumentRecord | null>(null)
+  const [isDeleting, setIsDeleting] = useState<boolean>(false)
 
   const filteredDocs = useMemo(() => {
     if (!filterText.trim()) return documents
@@ -322,6 +326,18 @@ export function DocumentsView({
                         <Sparkles className="size-2.5 text-primary" />
                         <span>Xem & Hỏi đáp</span>
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeletingDoc(doc)
+                        }}
+                        className="text-[11px] h-6 px-2 text-muted-foreground hover:text-destructive hover:border-destructive/40 hover:bg-destructive/10 cursor-pointer"
+                        title="Xóa tài liệu và toàn bộ dữ liệu liên quan"
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -330,6 +346,60 @@ export function DocumentsView({
           </table>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deletingDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-destructive/10 p-2 text-destructive shrink-0">
+                <Trash2 className="size-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-foreground">Xác nhận xóa tài liệu</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Bạn có chắc chắn muốn xóa tài liệu <strong className="text-foreground">"{deletingDoc.name}"</strong>?
+                </p>
+                <p className="text-[11px] text-destructive leading-relaxed">
+                  Toàn bộ các trang văn bản, kết quả phân tích, nhiệm vụ, nhắc nhở và tệp PDF được quản lý sẽ bị xóa vĩnh viễn. Dữ liệu không thể phục hồi.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeletingDoc(null)}
+                disabled={isDeleting}
+                className="text-xs cursor-pointer"
+              >
+                Hủy
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    setIsDeleting(true)
+                    await deleteDocument(deletingDoc.id)
+                    setDeletingDoc(null)
+                  } catch (err) {
+                    console.error("Delete failed:", err)
+                  } finally {
+                    setIsDeleting(false)
+                  }
+                }}
+                disabled={isDeleting}
+                className="gap-1.5 text-xs cursor-pointer"
+              >
+                {isDeleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                <span>{isDeleting ? "Đang xóa..." : "Xác nhận xóa"}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

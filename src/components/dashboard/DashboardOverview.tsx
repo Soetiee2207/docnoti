@@ -5,11 +5,12 @@ import {
   CheckSquare,
   HardDrive,
   ArrowUpRight,
-  AlertCircle,
   FileCheck2,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useDocuments } from "@/hooks/useDocuments"
+import { useTasks } from "@/hooks/useTasks"
 import type { DocumentRecord } from "@/db/schema"
 
 interface MetricCardProps {
@@ -52,30 +53,6 @@ function formatRelativeTime(isoString: string): string {
   }
 }
 
-const mockPendingTasks = [
-  {
-    id: "task-1",
-    title: "Thanh toán tiền thuê văn phòng đợt 3",
-    dueDate: "10/09/2026",
-    sourceDoc: "Hop_dong_thue_van_phong_2026.pdf",
-    priority: "Cao",
-  },
-  {
-    id: "task-2",
-    title: "Gửi biên bản đối soát cho đối tác",
-    dueDate: "12/09/2026",
-    sourceDoc: "Bien_ban_nghiem_thu_giai_doan_1.docx",
-    priority: "Trung bình",
-  },
-  {
-    id: "task-3",
-    title: "Nộp tờ khai thuế GTGT quý 3",
-    dueDate: "20/09/2026",
-    sourceDoc: "Thong_bao_nop_thue_Q3_2026.pdf",
-    priority: "Cao",
-  },
-]
-
 export function DashboardOverview({
   onNavigateToDocuments,
   onNavigateToTasks,
@@ -84,11 +61,14 @@ export function DashboardOverview({
   onNavigateToTasks?: () => void
 }) {
   const { documents } = useDocuments()
+  const { tasks, pendingCount, loading: loadingTasks } = useTasks()
 
   const processingCount = documents.filter(
     (d) => d.status === "imported" || d.status === "processing"
   ).length
   const recentDocs = documents.slice(0, 5)
+  const pendingTasks = tasks.filter((t) => t.status === "pending")
+  const displayTasks = (pendingTasks.length > 0 ? pendingTasks : tasks).slice(0, 5)
 
   return (
     <div className="space-y-6">
@@ -109,8 +89,8 @@ export function DashboardOverview({
         />
         <MetricCard
           title="Công việc cần xử lý"
-          value="0"
-          subtext="Chờ worker phân tích công việc"
+          value={pendingCount}
+          subtext={pendingCount > 0 ? `${pendingCount} nhiệm vụ đang chờ xác nhận` : "Không có công việc chờ xử lý"}
           icon={CheckSquare}
           badgeColor="bg-primary/10 text-primary"
         />
@@ -234,43 +214,59 @@ export function DashboardOverview({
               )}
             </div>
 
-            <div className="space-y-3">
-              {mockPendingTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-lg border border-border bg-background/50 p-3 hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-xs font-medium text-foreground line-clamp-2">
-                      {task.title}
-                    </span>
-                    <span
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                        task.priority === "Cao"
-                          ? "bg-destructive/10 text-destructive"
-                          : "bg-secondary text-secondary-foreground"
-                      }`}
-                    >
-                      {task.priority}
-                    </span>
+            {loadingTasks ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">
+                <Loader2 className="mx-auto mb-1.5 size-4 animate-spin text-muted-foreground" />
+                <span>Đang tải danh sách công việc...</span>
+              </div>
+            ) : displayTasks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-8 text-center text-xs text-muted-foreground space-y-2">
+                <CheckSquare className="size-6 text-muted-foreground/40" />
+                <p className="font-medium text-foreground">Chưa có công việc cần xử lý</p>
+                <p className="text-[11px] max-w-[200px]">
+                  Các nhiệm vụ và hạn chót sẽ tự động hiển thị tại đây khi bạn phân tích tài liệu.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {displayTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="rounded-lg border border-border bg-background/50 p-3 hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs font-medium text-foreground line-clamp-2">
+                        {task.title}
+                      </span>
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          task.status === "pending"
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : task.status === "confirmed"
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : "bg-secondary text-secondary-foreground"
+                        }`}
+                      >
+                        {task.status === "pending"
+                          ? "Chờ xác nhận"
+                          : task.status === "confirmed"
+                          ? "Đã xác nhận"
+                          : task.status}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="size-3" />
+                        {task.deadlineDate || task.rawDeadline || "Không có hạn chót"}
+                      </span>
+                      <span className="truncate max-w-[120px]" title={documents.find((d) => d.id === task.documentId)?.name}>
+                        {documents.find((d) => d.id === task.documentId)?.name || "Tài liệu"}
+                      </span>
+                    </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="size-3" />
-                      {task.dueDate}
-                    </span>
-                    <span className="truncate max-w-[120px]" title={task.sourceDoc}>
-                      {task.sourceDoc}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-lg bg-muted/40 p-3 text-[11px] text-muted-foreground flex items-center gap-2">
-            <AlertCircle className="size-4 shrink-0 text-muted-foreground" />
-            <span>Nhiệm vụ mẫu cho giao diện V1 (sẽ được trích xuất tự động khi worker chạy).</span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

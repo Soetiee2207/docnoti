@@ -151,4 +151,34 @@ export class DocumentIngestionService {
 
     return { succeeded, failed }
   }
+
+  /**
+   * Deletes a document and all of its dependent database records and managed storage file.
+   * Safe and idempotent: returns false if the document does not exist.
+   */
+  async deleteDocument(documentId: string): Promise<boolean> {
+    if (!documentId) return false
+
+    const document = await this.documentRepo.findById(documentId)
+    if (!document) {
+      return false
+    }
+
+    const storagePath = document.storagePath
+
+    // 1. Delete all database records across all dependent tables in cascade
+    await this.documentRepo.delete(documentId)
+
+    // 2. Delete managed physical storage file
+    if (storagePath) {
+      try {
+        await this.storageService.deleteStoredFile(storagePath)
+      } catch (err) {
+        console.warn(`[DocumentIngestionService] Could not remove physical file ${storagePath}:`, err)
+      }
+    }
+
+    return true
+  }
 }
+
