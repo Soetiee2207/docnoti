@@ -3,7 +3,6 @@ import {
   FileText,
   Clock,
   CheckSquare,
-  HardDrive,
   ArrowUpRight,
   FileCheck2,
   Loader2,
@@ -16,23 +15,21 @@ import type { DocumentRecord } from "@/db/schema"
 interface MetricCardProps {
   title: string
   value: string | number
-  subtext: string
   icon: React.ComponentType<{ className?: string }>
   badgeColor?: string
 }
 
-function MetricCard({ title, value, subtext, icon: Icon, badgeColor }: MetricCardProps) {
+function MetricCard({ title, value, icon: Icon, badgeColor }: MetricCardProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
+    <div className="rounded-xl border border-border bg-card p-4 transition-colors">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">{title}</span>
         <div className={`flex size-8 items-center justify-center rounded-lg ${badgeColor || "bg-secondary text-secondary-foreground"}`}>
           <Icon className="size-4" />
         </div>
       </div>
-      <div className="mt-3">
-        <div className="text-2xl font-bold tracking-tight text-card-foreground">{value}</div>
-        <p className="mt-1 text-xs text-muted-foreground">{subtext}</p>
+      <div className="mt-2">
+        <div className="text-2xl font-semibold tracking-tight text-card-foreground">{value}</div>
       </div>
     </div>
   )
@@ -72,34 +69,24 @@ export function DashboardOverview({
 
   return (
     <div className="space-y-6">
-      {/* 4 Metric Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 3 Streamlined Metric Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <MetricCard
           title="Tổng số tài liệu"
           value={documents.length}
-          subtext={`${documents.length} tài liệu trong cơ sở dữ liệu`}
           icon={FileText}
         />
         <MetricCard
-          title="Đang chờ / Đang xử lý"
+          title="Đang xử lý"
           value={processingCount}
-          subtext={processingCount > 0 ? `${processingCount} tài liệu trong hàng đợi` : "Không có hàng đợi"}
           icon={Clock}
           badgeColor="bg-amber-500/10 text-amber-600 dark:text-amber-400"
         />
         <MetricCard
           title="Công việc cần xử lý"
           value={pendingCount}
-          subtext={pendingCount > 0 ? `${pendingCount} nhiệm vụ đang chờ xác nhận` : "Không có công việc chờ xử lý"}
           icon={CheckSquare}
           badgeColor="bg-primary/10 text-primary"
-        />
-        <MetricCard
-          title="Chế độ bảo mật"
-          value="100% Cục bộ"
-          subtext="Không gửi dữ liệu ra ngoài"
-          icon={HardDrive}
-          badgeColor="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
         />
       </div>
 
@@ -108,10 +95,7 @@ export function DashboardOverview({
         {/* Recent Activity Table (2 columns on large screens) */}
         <div className="rounded-xl border border-border bg-card p-5 shadow-xs lg:col-span-2">
           <div className="flex items-center justify-between pb-4">
-            <div>
-              <h3 className="text-sm font-semibold text-card-foreground">Hoạt động gần đây</h3>
-              <p className="text-xs text-muted-foreground">Tài liệu vừa được nhập hoặc cập nhật xử lý</p>
-            </div>
+            <h3 className="text-sm font-semibold text-card-foreground">Hoạt động gần đây</h3>
             {onNavigateToDocuments && (
               <Button
                 variant="ghost"
@@ -198,10 +182,7 @@ export function DashboardOverview({
         <div className="rounded-xl border border-border bg-card p-5 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-4">
-              <div>
-                <h3 className="text-sm font-semibold text-card-foreground">Công việc cần xử lý</h3>
-                <p className="text-xs text-muted-foreground">Hạn chót trích xuất từ tài liệu</p>
-              </div>
+              <h3 className="text-sm font-semibold text-card-foreground">Công việc cần xử lý</h3>
               {onNavigateToTasks && (
                 <Button
                   variant="ghost"

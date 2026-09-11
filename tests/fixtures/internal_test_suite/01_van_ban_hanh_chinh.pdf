@@ -2,16 +2,16 @@
 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
 2 0 obj << /Type /Pages /Kids [3 0 R 5 0 R 7 0 R] /Count 3 >> endobj
 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 4 0 R >> endobj
-4 0 obj << /Length 130 >> stream
-BT /F1 12 Tf 50 720 Td (CONG HOA XA HOI CHU NGHIA VIET NAM) Tj -50 -20 Td 50 700 Td (Doc lap - Tu do - Hanh phuc) Tj -50 -20 Td ET
+4 0 obj << /Length 107 >> stream
+BT /F1 12 Tf 50 720 Td (CONG HOA XA HOI CHU NGHIA VIET NAM) Tj 0 -20 Td (Doc lap - Tu do - Hanh phuc) Tj ET
 endstream endobj
 5 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 6 0 R >> endobj
-6 0 obj << /Length 102 >> stream
-BT /F1 12 Tf 50 720 Td (QUYET DINH VE VIEC BAN HANH KE HOACH CONG TAC QUY 4 NAM 2026) Tj -50 -20 Td ET
+6 0 obj << /Length 91 >> stream
+BT /F1 12 Tf 50 720 Td (QUYET DINH VE VIEC BAN HANH KE HOACH CONG TAC QUY 4 NAM 2026) Tj ET
 endstream endobj
 7 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 8 0 R >> endobj
-8 0 obj << /Length 143 >> stream
-BT /F1 12 Tf 50 720 Td (Dieu 1. Giao Phong Ke hoach tong hop nop bao cao quy truoc ngay 15/10/2026 de trinh lanh dao xem xet.) Tj -50 -20 Td ET
+8 0 obj << /Length 132 >> stream
+BT /F1 12 Tf 50 720 Td (Dieu 1. Giao Phong Ke hoach tong hop nop bao cao quy truoc ngay 15/10/2026 de trinh lanh dao xem xet.) Tj ET
 endstream endobj
 9 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
 xref
@@ -19,5 +19,5 @@ xref
 0000000000 65535 f 
 trailer << /Size 10 /Root 1 0 R >>
 startxref
-1103
+1057
 %%EOF

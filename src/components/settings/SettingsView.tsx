@@ -13,11 +13,14 @@ import {
   FileText,
   Database,
   Terminal,
+  Palette,
+  Globe,
 } from "lucide-react"
 import { useAutostart } from "@/hooks/useAutostart"
 import { useSecrets } from "@/hooks/useSecrets"
 import { useAiConfig } from "@/hooks/useAiConfig"
 import { useStorageConfig, type StorageDirKey } from "@/hooks/useStorageConfig"
+import { ThemeToggle } from "@/components/theme/ThemeToggle"
 
 export function SettingsView() {
   const { autostartEnabled, daemonStatus, loading, error, setAutostart } = useAutostart()
@@ -90,6 +93,32 @@ export function SettingsView() {
 
   return (
     <div className="max-w-3xl space-y-6">
+      {/* Theme & Language Preferences */}
+      <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+              <Palette className="size-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-card-foreground">Giao diện & Chủ đề</h2>
+              <p className="text-xs text-muted-foreground">Tùy chỉnh chế độ sáng, tối hoặc theo hệ thống</p>
+            </div>
+          </div>
+          <ThemeToggle />
+        </div>
+
+        <div className="rounded-lg border border-border bg-background p-3 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Globe className="size-3.5 text-muted-foreground" />
+            <span>Ngôn ngữ hiển thị AI mặc định:</span>
+          </div>
+          <span className="rounded bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground">
+            Tiếng Việt (vi-VN)
+          </span>
+        </div>
+      </div>
+
       {/* Windows Autostart & Background Daemon */}
       <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
@@ -442,7 +471,7 @@ export function SettingsView() {
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-foreground">Xử lý Cục bộ (Mặc định)</span>
+              <span className="font-semibold text-foreground">Ngoại tuyến / Mô phỏng (Mock AI)</span>
               {!cloudEnabled && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-primary">
                   <CheckCircle2 className="size-3" />
@@ -451,7 +480,7 @@ export function SettingsView() {
               )}
             </div>
             <p className="text-muted-foreground text-[11px]">
-              Không gửi dữ liệu ra internet. Phù hợp tài liệu bảo mật hoặc khi không có API key.
+              Không gửi dữ liệu ra internet. Tóm tắt và hỏi đáp sử dụng dữ liệu mô phỏng định sẵn (Mock Provider). Phù hợp khi kiểm thử hoặc chưa cấu hình API key.
             </p>
           </button>
 
@@ -474,10 +503,22 @@ export function SettingsView() {
               )}
             </div>
             <p className="text-muted-foreground text-[11px]">
-              Hỏi đáp tài liệu thông minh kiểu NotebookLM. Chỉ gửi các đoạn trích cần thiết (Retrieval context).
+              Phân tích tài liệu chuyên sâu và hỏi đáp thông minh theo ngữ cảnh bằng OpenAI GPT. Chỉ gửi các đoạn trích cần thiết (Retrieval context).
             </p>
           </button>
         </div>
+
+        {cloudEnabled && !isApiKeyConfigured && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+            <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <div className="space-y-0.5">
+              <p className="font-semibold text-[11px]">Chưa lưu OpenAI API Key</p>
+              <p className="text-[11px] leading-relaxed text-amber-700/90 dark:text-amber-300/90">
+                Bạn đã bật chế độ Cloud AI nhưng chưa nhập khóa API. Hệ thống sẽ tạm thời sử dụng Mock AI cho đến khi bạn lưu một API Key hợp lệ bên dưới.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* OpenAI API Key Management */}
         <div className="rounded-lg border border-border bg-background p-4 text-xs space-y-3">

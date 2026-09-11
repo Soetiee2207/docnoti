@@ -90,8 +90,12 @@ function StatusBadge({ status }: { status: string }) {
 
 export function DocumentsView({
   searchQuery = "",
+  onToggleFocusMode,
+  isFocusMode,
 }: {
   searchQuery?: string
+  onToggleFocusMode?: () => void
+  isFocusMode?: boolean
 }) {
   const {
     documents,
@@ -147,6 +151,8 @@ export function DocumentsView({
       <DocumentDetailView
         documentId={selectedDocId}
         onBack={() => setSelectedDocId(null)}
+        onToggleFocusMode={onToggleFocusMode}
+        isFocusMode={isFocusMode}
       />
     )
   }

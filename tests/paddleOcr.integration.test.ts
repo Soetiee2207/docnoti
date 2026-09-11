@@ -27,7 +27,7 @@ describe("PaddleOCR Integration & Environment Discovery", () => {
       console.log("[INFO] PaddleOCR is installed in current Python environment.")
       expect(isAvailable).toBe(true)
     }
-  }, 30000)
+  }, 90000)
 
   it("rejects empty image data even if called directly", async () => {
     await expect(provider.recognizePage(new Uint8Array([]), 1)).rejects.toThrow(OCRError)

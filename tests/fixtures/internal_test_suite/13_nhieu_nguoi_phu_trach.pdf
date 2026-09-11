@@ -2,20 +2,20 @@
 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
 2 0 obj << /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R] /Count 4 >> endobj
 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 4 0 R >> endobj
-4 0 obj << /Length 149 >> stream
-BT /F1 12 Tf 50 720 Td (PHAN CONG TRACH NHIEM THUC HIEN KIEM TOAN NOI BO) Tj -50 -20 Td 50 700 Td (Ban Giam doc phe duyet ke hoach.) Tj -50 -20 Td ET
+4 0 obj << /Length 126 >> stream
+BT /F1 12 Tf 50 720 Td (PHAN CONG TRACH NHIEM THUC HIEN KIEM TOAN NOI BO) Tj 0 -20 Td (Ban Giam doc phe duyet ke hoach.) Tj ET
 endstream endobj
 5 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 6 0 R >> endobj
-6 0 obj << /Length 118 >> stream
-BT /F1 12 Tf 50 720 Td (1. Phong Phap che: Ra soat tinh hop phap cac hop dong truoc ngay 12/11/2026.) Tj -50 -20 Td ET
+6 0 obj << /Length 107 >> stream
+BT /F1 12 Tf 50 720 Td (1. Phong Phap che: Ra soat tinh hop phap cac hop dong truoc ngay 12/11/2026.) Tj ET
 endstream endobj
 7 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 8 0 R >> endobj
-8 0 obj << /Length 109 >> stream
-BT /F1 12 Tf 50 720 Td (2. Ke toan truong: Cung cap so sach chung tu truoc ngay 18/11/2026.) Tj -50 -20 Td ET
+8 0 obj << /Length 98 >> stream
+BT /F1 12 Tf 50 720 Td (2. Ke toan truong: Cung cap so sach chung tu truoc ngay 18/11/2026.) Tj ET
 endstream endobj
 9 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 10 0 R >> endobj
-10 0 obj << /Length 106 >> stream
-BT /F1 12 Tf 50 720 Td (3. Phong Nhan su: Cung cap ho so lao dong truoc ngay 22/11/2026.) Tj -50 -20 Td ET
+10 0 obj << /Length 95 >> stream
+BT /F1 12 Tf 50 720 Td (3. Phong Nhan su: Cung cap ho so lao dong truoc ngay 22/11/2026.) Tj ET
 endstream endobj
 11 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
 xref
@@ -23,5 +23,5 @@ xref
 0000000000 65535 f 
 trailer << /Size 12 /Root 1 0 R >>
 startxref
-1400
+1342
 %%EOF

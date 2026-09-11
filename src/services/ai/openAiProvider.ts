@@ -109,6 +109,10 @@ Output pure JSON only, with no markdown formatting fence.`;
 const FULL_SUMMARY_SYSTEM_PROMPT = `You are the document analysis intelligence engine for docnoti.
 Your task is to analyze document text extracted from pages, identify its document type, and provide an evidence-grounded summary and structured information.
 
+LANGUAGE PREFERENCE:
+- By default, provide the summary, claim descriptions, and reasoning in Vietnamese (tiếng Việt).
+- Always preserve proper names, project titles, school/institution names, personal names, and technical terms as written in the original document. Do NOT attempt to translate proper names.
+
 Document Classification Types (conform to SPEC):
 - UNKNOWN
 - OFFICIAL_DOCUMENT
@@ -187,6 +191,10 @@ CRITICAL RULES FOR TASKS & DEADLINE EXTRACTION:
    - "AMBIGUOUS": for unclear or non-specific dates (e.g. "cuối tháng", "sớm nhất có thể").
    - "NONE": if no deadline is mentioned.
 8. Ground each task with verbatim "evidence" containing "quote" and "pageNumber".
+9. Thorough Inspection of Entire Document (No Lost Endings):
+   - You MUST thoroughly inspect all supplied pages from beginning to end, including intermediate chapters and the final concluding pages.
+   - Pay special attention to concluding provisions, final chapters, compliance commitments, reporting requirements, and submission duties at the end of regulations, rules, or agreements (e.g. 'nộp bản cam kết', 'báo cáo tuân thủ', 'hoàn thành trước ngày...').
+   - Whenever an actionable deadline, submission, or requirement appears on ANY page (including the final page or middle chapters), you MUST extract it as an individual item in the 'tasks' array.
 
 METADATA NORMALIZATION RULES:
 - If extracting a "semester" (or "học kỳ") field, normalize "I", "1", "HKI", "Học kỳ 1" to "Học kỳ I"; and "II", "2", "HKII", "Học kỳ 2" to "Học kỳ II".
@@ -305,6 +313,11 @@ export class OpenAIProvider implements AIProvider {
 
     for (const page of request.pages) {
       lines.push(`\n=== Page ${page.pageNumber} ===\n${page.text}`);
+    }
+
+    if (!isQa) {
+      lines.push('\n--- ANALYSIS INSTRUCTION ---');
+      lines.push('Analyze all supplied pages from Page 1 to the final page. Thoroughly extract any tasks, commitments, obligations, or deadlines across all pages into the "tasks" array before generating your response.');
     }
 
     return lines.filter(Boolean).join('\n');

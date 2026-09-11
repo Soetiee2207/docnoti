@@ -31,6 +31,7 @@ interface DocumentAnalysisQaViewProps {
   onNavigateToPage: (pageNumber: number) => void
   qaHistory?: QaHistoryItem[]
   onClearHistory?: () => void
+  isCloudAiReady?: boolean
 }
 
 export function DocumentAnalysisQaView({
@@ -46,9 +47,9 @@ export function DocumentAnalysisQaView({
   onNavigateToPage,
   qaHistory = [],
   onClearHistory,
+  isCloudAiReady,
 }: DocumentAnalysisQaViewProps) {
   const [submittedQuery, setSubmittedQuery] = useState<string>("")
-  // Evidence is expanded by default to show sources immediately
   const [collapsedEvidenceIds, setCollapsedEvidenceIds] = useState<Record<string, boolean>>({})
 
   const toggleEvidenceExpand = (id: string) => {
@@ -138,12 +139,12 @@ export function DocumentAnalysisQaView({
   return (
     <div className="flex flex-col gap-4">
       {/* Header with Q&A control */}
-      <div className="flex items-center justify-between gap-2 pb-1 border-b border-border/50">
+      <div className="flex items-center justify-between gap-2 pb-1 border-b border-border/60">
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 text-primary" />
-          <h3 className="text-xs font-semibold text-foreground">Hỏi đáp tài liệu (NotebookLM style)</h3>
+          <h3 className="text-xs font-semibold text-foreground">Hỏi đáp tài liệu</h3>
           {displayItems.length > 0 && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.2 text-[10px] font-medium text-primary">
+            <span className="rounded-full bg-secondary px-2 py-0.2 text-[10px] font-medium text-secondary-foreground">
               {displayItems.length} câu hỏi
             </span>
           )}
@@ -153,7 +154,7 @@ export function DocumentAnalysisQaView({
             variant="ghost"
             size="xs"
             onClick={onClearHistory}
-            className="text-[11px] text-muted-foreground hover:text-destructive gap-1 h-7"
+            className="text-[11px] text-muted-foreground hover:text-destructive gap-1 h-7 cursor-pointer"
             title="Xóa toàn bộ lịch sử hỏi đáp của phiên này"
           >
             <Trash2 className="size-3" />
@@ -177,7 +178,7 @@ export function DocumentAnalysisQaView({
               className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-3.5 transition-all"
             >
               {/* Question Header */}
-              <div className="flex items-start justify-between gap-2 border-b border-border/50 pb-2.5">
+              <div className="flex items-start justify-between gap-2 border-b border-border/40 pb-2.5">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold">
                     Q
@@ -190,9 +191,27 @@ export function DocumentAnalysisQaView({
                   <span className="rounded bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase text-secondary-foreground">
                     {itemRes.documentType}
                   </span>
+                  {(itemRes.provider === "mock-ai-provider" || itemRes.model === "mock-doc-v1" || isCloudAiReady === false) && (
+                    <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                      Mô phỏng (Mock AI)
+                    </span>
+                  )}
                   <StatusBadge status={itemRes.confidence || "VERIFIED"} />
                 </div>
               </div>
+
+              {/* Mock AI Advisory Banner */}
+              {(itemRes.provider === "mock-ai-provider" || itemRes.model === "mock-doc-v1" || isCloudAiReady === false) && (
+                <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <div className="space-y-0.5">
+                    <p className="font-semibold text-[11px]">Câu trả lời từ Mô hình Mô phỏng (Mock AI Provider)</p>
+                    <p className="text-[11px] leading-relaxed text-amber-700/90 dark:text-amber-300/90">
+                      Ứng dụng chưa kích hoạt Cloud AI hoặc chưa lưu OpenAI API Key. Câu trả lời này được tạo từ bộ sinh mẫu (Mock AI) và không phản ánh nội dung suy luận thực tế. Vui lòng vào <strong>Cài đặt</strong> để nhập API Key và bật Cloud AI.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Degraded / Empty Warnings */}
               {item.isDegraded && (
@@ -219,23 +238,23 @@ export function DocumentAnalysisQaView({
               )}
 
               {/* Main Natural Answer Body */}
-              <div className="text-xs leading-relaxed text-foreground select-text whitespace-pre-line">
+              <div className="text-xs leading-relaxed text-foreground select-text whitespace-pre-line font-normal">
                 {itemAnswer}
               </div>
 
-              {/* Citation Source Chips (NotebookLM style) */}
+              {/* Citation Source Navigation Element */}
               {citationPages.length > 0 && (
                 <div className="flex items-center flex-wrap gap-1.5 pt-1">
-                  <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1 select-none">
                     <FileText className="size-3" />
-                    Nguồn trích dẫn:
+                    Nguồn:
                   </span>
                   {citationPages.map((page) => (
                     <button
                       key={page}
                       type="button"
                       onClick={() => onNavigateToPage(page)}
-                      className="inline-flex items-center gap-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary px-2 py-0.5 text-[10px] font-semibold transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer border border-primary/20"
                       title={`Nhấp để mở trang ${page} trên tài liệu`}
                     >
                       <span>{`Trang ${page}`}</span>
@@ -245,17 +264,17 @@ export function DocumentAnalysisQaView({
                 </div>
               )}
 
-              {/* Collapsible Evidence Section */}
+              {/* Collapsible Evidence Section (Technical details inside) */}
               {evidenceCount > 0 && (
                 <div className="pt-2 border-t border-border/40">
                   <button
                     type="button"
                     onClick={() => toggleEvidenceExpand(item.id)}
-                    className="flex items-center justify-between w-full text-left py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer group"
+                    className="flex items-center justify-between w-full text-left py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer group select-none"
                   >
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <Quote className="size-3.5 text-primary group-hover:scale-110 transition-transform" />
-                      <span>{`Xem ${evidenceCount} bằng chứng xác thực trích dẫn`}</span>
+                    <span className="flex items-center gap-1.5 font-medium text-[11px]">
+                      <Quote className="size-3 text-primary" />
+                      <span>{`Chi tiết bằng chứng xác thực (${evidenceCount})`}</span>
                     </span>
                     {isEvidenceExpanded ? (
                       <ChevronUp className="size-3.5" />
@@ -265,25 +284,25 @@ export function DocumentAnalysisQaView({
                   </button>
 
                   {isEvidenceExpanded && (
-                    <div className="mt-2.5 space-y-2">
+                    <div className="mt-2 space-y-2">
                       {itemRes.evidences?.map((evidence, evIdx) => (
                         <div
                           key={evIdx}
-                          className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-2 text-xs"
+                          className="rounded-lg border border-border/60 bg-muted/20 p-2.5 space-y-1.5 text-xs"
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <p className="font-medium text-foreground select-text">{evidence.claim}</p>
+                            <p className="font-medium text-foreground select-text text-[11px]">{evidence.claim}</p>
                             <StatusBadge status={evidence.status} />
                           </div>
 
                           {evidence.reasoning && (
-                            <p className="text-[11px] text-muted-foreground italic select-text">
+                            <p className="text-[10px] text-muted-foreground italic select-text">
                               {evidence.reasoning}
                             </p>
                           )}
 
                           {evidence.citations && evidence.citations.length > 0 && (
-                            <div className="space-y-1.5 pt-1">
+                            <div className="space-y-1.5 pt-0.5">
                               {evidence.citations.map((citation, cIdx) => {
                                 const matchedSource = getProvenanceSource(
                                   citation.sourceText,
@@ -308,7 +327,7 @@ export function DocumentAnalysisQaView({
                                     </div>
 
                                     {citation.sourceText && (
-                                      <blockquote className="border-l-2 border-primary/50 pl-2 text-[11px] italic text-foreground/90 select-text">
+                                      <blockquote className="border-l-2 border-primary/50 pl-2 text-[10px] italic text-foreground/90 select-text">
                                         "{citation.sourceText}"
                                       </blockquote>
                                     )}
@@ -327,7 +346,7 @@ export function DocumentAnalysisQaView({
               {/* Extracted Fields (if any) */}
               {itemRes.fields && itemRes.fields.length > 0 && (
                 <div className="pt-2 border-t border-border/40 space-y-1.5">
-                  <h5 className="text-[11px] font-semibold text-foreground flex items-center gap-1">
+                  <h5 className="text-[11px] font-semibold text-foreground flex items-center gap-1 select-none">
                     <Layers className="size-3 text-muted-foreground" />
                     Trường thông tin trích xuất:
                   </h5>
@@ -400,6 +419,16 @@ export function DocumentAnalysisQaView({
               "Có các thời hạn hoặc nhiệm vụ nào?"
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Pre-question Mock notice if Cloud AI is not configured */}
+      {isCloudAiReady === false && (
+        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+          <Info className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span className="text-[11px] leading-tight">
+            Cloud AI chưa được cấu hình. Hỏi đáp đang hoạt động ở chế độ mô phỏng (Mock AI). Vui lòng vào <strong>Cài đặt</strong> để nhập OpenAI API Key để trả lời chính xác theo tài liệu.
+          </span>
         </div>
       )}
 

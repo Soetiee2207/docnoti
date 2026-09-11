@@ -1,5 +1,15 @@
 import { useState } from "react"
-import { ArrowLeft, FileText, Sparkles, FileCheck2, CheckSquare, RotateCw, Trash2, Loader2 } from "lucide-react"
+import {
+  ArrowLeft,
+  FileText,
+  Sparkles,
+  FileCheck2,
+  CheckSquare,
+  RotateCw,
+  Trash2,
+  Maximize2,
+  Minimize2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DocumentViewer } from "./DocumentViewer"
 import { DocumentAnalysisQaView } from "./DocumentAnalysisQaView"
@@ -8,10 +18,14 @@ import { TaskCard } from "@/components/tasks/TaskCard"
 import { useDocumentAnalysis } from "@/hooks/useDocumentAnalysis"
 import { useTasks } from "@/hooks/useTasks"
 import { useDocuments } from "@/hooks/useDocuments"
+import { useAiConfig } from "@/hooks/useAiConfig"
+import { useSecrets } from "@/hooks/useSecrets"
 
 interface DocumentDetailViewProps {
   documentId: string
   onBack: () => void
+  onToggleFocusMode?: () => void
+  isFocusMode?: boolean
 }
 
 type DetailTab = "qa" | "summary" | "tasks"
@@ -24,7 +38,12 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewProps) {
+export function DocumentDetailView({
+  documentId,
+  onBack,
+  onToggleFocusMode,
+  isFocusMode = false,
+}: DocumentDetailViewProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("qa")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -63,6 +82,10 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
     reloadTasks,
   } = useTasks({ documentId })
 
+  const { cloudEnabled } = useAiConfig()
+  const { isConfigured: isApiKeyConfigured } = useSecrets()
+  const isCloudAiReady = cloudEnabled && isApiKeyConfigured
+
   const handleGenerateSummary = async (forceRefresh = false) => {
     await loadFullSummary(forceRefresh)
     await reloadTasks()
@@ -86,7 +109,7 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
   return (
     <div className="space-y-4">
       {/* Top Header & Navigation Bar */}
-      <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -101,11 +124,11 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
           {document && (
             <div className="flex items-center gap-2 min-w-0">
               <FileText className="size-4 text-primary shrink-0" />
-              <span className="text-xs font-semibold text-foreground truncate max-w-[280px]">
+              <span className="text-xs font-semibold text-foreground truncate max-w-[240px] sm:max-w-[320px]">
                 {document.name}
               </span>
-              <span className="text-[11px] text-muted-foreground">
-                ({formatBytes(document.fileSize)})
+              <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                {formatBytes(document.fileSize)}
               </span>
             </div>
           )}
@@ -120,25 +143,25 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
               title="Xử lý lại trích xuất văn bản và OCR cho tài liệu này"
             >
               <RotateCw className={`size-3.5 ${reprocessing ? "animate-spin" : ""}`} />
-              <span>{reprocessing ? "Đang xử lý lại..." : "Xử lý lại tài liệu"}</span>
+              <span>{reprocessing ? "Đang xử lý lại..." : "Xử lý lại"}</span>
             </Button>
           )}
         </div>
 
-        {/* View Switcher Tabs & Delete action */}
+        {/* View Switcher Tabs, Focus Mode & Actions */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-lg bg-muted p-1 text-xs">
             <button
               type="button"
               onClick={() => setActiveTab("qa")}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors ${
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors cursor-pointer ${
                 activeTab === "qa"
-                  ? "bg-background text-foreground shadow-xs"
+                  ? "bg-background text-foreground shadow-xs font-semibold"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Sparkles className="size-3.5 text-primary" />
-              <span>Hỏi đáp & Bằng chứng</span>
+              <span>Hỏi đáp</span>
             </button>
             <button
               type="button"
@@ -148,14 +171,14 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
                   void handleGenerateSummary(false)
                 }
               }}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors ${
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors cursor-pointer ${
                 activeTab === "summary"
-                  ? "bg-background text-foreground shadow-xs"
+                  ? "bg-background text-foreground shadow-xs font-semibold"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <FileCheck2 className="size-3.5 text-muted-foreground" />
-              <span>Tóm tắt tổng quan</span>
+              <span>Tóm tắt</span>
             </button>
             <button
               type="button"
@@ -163,22 +186,46 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
                 setActiveTab("tasks")
                 void reloadTasks()
               }}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors ${
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors cursor-pointer ${
                 activeTab === "tasks"
-                  ? "bg-background text-foreground shadow-xs"
+                  ? "bg-background text-foreground shadow-xs font-semibold"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <CheckSquare className="size-3.5 text-amber-500" />
               <span>Nhiệm vụ</span>
               {pendingCount > 0 && (
-                <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                <span className="rounded-full bg-amber-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
                   {pendingCount}
                 </span>
               )}
             </button>
           </div>
 
+          {/* Focus Mode Toggle */}
+          {onToggleFocusMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onToggleFocusMode}
+              className="gap-1.5 text-xs h-8 cursor-pointer"
+              title={isFocusMode ? "Thu nhỏ (Hiện thanh menu)" : "Chế độ tập trung (Ẩn menu)"}
+            >
+              {isFocusMode ? (
+                <>
+                  <Minimize2 className="size-3.5" />
+                  <span className="hidden md:inline">Thoát tập trung</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="size-3.5" />
+                  <span className="hidden md:inline">Tập trung</span>
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* Delete Button */}
           <Button
             variant="outline"
             size="sm"
@@ -187,25 +234,15 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
             title="Xóa tài liệu này"
           >
             <Trash2 className="size-3.5" />
-            <span>Xóa tài liệu</span>
+            <span className="hidden sm:inline">Xóa</span>
           </Button>
         </div>
       </div>
 
-      {/* Two-Panel Split Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Document Page Viewer (5 cols) */}
-        <div className="lg:col-span-5 sticky top-4">
-          <DocumentViewer
-            pages={pages}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            loading={loadingDoc}
-          />
-        </div>
-
-        {/* Right Column: Q&A / Analysis Intelligence Panel (7 cols) */}
-        <div className="lg:col-span-7">
+      {/* Two-Panel Split Layout (LEFT: Intelligence / RIGHT: Document Viewer) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Left Column: Q&A / Analysis Intelligence Panel (6 cols) */}
+        <div className="lg:col-span-6 order-2 lg:order-1">
           {activeTab === "qa" && (
             <DocumentAnalysisQaView
               question={question}
@@ -220,6 +257,7 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
               onNavigateToPage={setCurrentPage}
               qaHistory={qaHistory}
               onClearHistory={clearQaHistory}
+              isCloudAiReady={isCloudAiReady}
             />
           )}
 
@@ -229,21 +267,17 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
               loading={loadingSummary}
               onGenerate={() => handleGenerateSummary(true)}
               onNavigateToPage={setCurrentPage}
+              isCloudAiReady={isCloudAiReady}
             />
           )}
 
           {activeTab === "tasks" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <CheckSquare className="size-3.5 text-muted-foreground" />
-                    Nhiệm vụ & Hạn chót từ tài liệu này ({tasks.length})
-                  </h3>
-                  <p className="text-[11px] text-muted-foreground">
-                    Xác nhận hoặc chỉnh sửa các hành động được AI gợi ý dựa trên bằng chứng
-                  </p>
-                </div>
+                <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <CheckSquare className="size-3.5 text-muted-foreground" />
+                  Nhiệm vụ & Hạn chót từ tài liệu ({tasks.length})
+                </h3>
               </div>
 
               {loadingTasks && (
@@ -256,9 +290,6 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-10 text-center text-muted-foreground">
                   <CheckSquare className="size-7 text-muted-foreground/50 mb-2" />
                   <p className="text-xs font-medium text-foreground">Chưa có nhiệm vụ nào cho tài liệu này</p>
-                  <p className="mt-1 text-[11px] max-w-xs">
-                    Hãy thực hiện phân tích tóm tắt toàn văn hoặc hỏi đáp để hệ thống trích xuất nhiệm vụ.
-                  </p>
                 </div>
               )}
 
@@ -278,6 +309,17 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
             </div>
           )}
         </div>
+
+        {/* Right Column: Document Viewer (6 cols) */}
+        <div className="lg:col-span-6 order-1 lg:order-2 sticky top-4">
+          <DocumentViewer
+            pages={pages}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            loading={loadingDoc}
+            storagePath={document?.storagePath}
+          />
+        </div>
       </div>
 
       {/* Delete Confirmation Modal */}
@@ -290,47 +332,34 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
               </div>
               <div>
                 <h3 className="text-base font-semibold text-foreground">Xác nhận xóa tài liệu</h3>
-                <p className="text-xs text-muted-foreground">Hành động này không thể hoàn tác</p>
+                <p className="text-xs text-muted-foreground">
+                  Hành động này sẽ xóa vĩnh viễn tệp tài liệu, văn bản trích xuất, vector embeddings và toàn bộ các nhiệm vụ liên quan.
+                </p>
               </div>
             </div>
 
-            <div className="text-xs text-muted-foreground space-y-2">
-              <p>
-                Bạn có chắc chắn muốn xóa tài liệu <span className="font-semibold text-foreground">"{document?.name}"</span>?
-              </p>
-              <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 p-2 rounded-md border border-amber-500/20">
-                ⚠️ Toàn bộ dữ liệu liên quan (trang văn bản, chỉ mục tìm kiếm FTS, vector embeddings, phân tích tóm tắt, nhiệm vụ và công việc xử lý) cùng tệp lưu trữ vật lý sẽ bị xóa vĩnh viễn.
-              </p>
-            </div>
+            <p className="text-xs text-foreground/80 bg-muted/30 p-2.5 rounded-lg border border-border">
+              Tài liệu: <strong>{document?.name}</strong>
+            </p>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <div className="flex justify-end gap-2 pt-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={deleting}
-                className="cursor-pointer text-xs"
+                className="text-xs cursor-pointer"
               >
-                Hủy
+                Hủy bỏ
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => void handleDeleteDocument()}
+                onClick={handleDeleteDocument}
                 disabled={deleting}
-                className="gap-1.5 cursor-pointer text-xs"
+                className="text-xs cursor-pointer"
               >
-                {deleting ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Đang xóa...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="size-3.5" />
-                    <span>Xác nhận xóa</span>
-                  </>
-                )}
+                {deleting ? "Đang xóa..." : "Xóa vĩnh viễn"}
               </Button>
             </div>
           </div>
@@ -339,4 +368,3 @@ export function DocumentDetailView({ documentId, onBack }: DocumentDetailViewPro
     </div>
   )
 }
-

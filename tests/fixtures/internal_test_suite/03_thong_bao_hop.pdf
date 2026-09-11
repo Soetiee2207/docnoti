@@ -2,12 +2,12 @@
 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
 2 0 obj << /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >> endobj
 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >> endobj
-4 0 obj << /Length 156 >> stream
-BT /F1 12 Tf 50 720 Td (THONG BAO MOI HOP GIAO BAN TOAN CONG TY) Tj -50 -20 Td 50 700 Td (Kinh gui: Cac Truong Don vi phong ban truc thuoc) Tj -50 -20 Td ET
+4 0 obj << /Length 133 >> stream
+BT /F1 12 Tf 50 720 Td (THONG BAO MOI HOP GIAO BAN TOAN CONG TY) Tj 0 -20 Td (Kinh gui: Cac Truong Don vi phong ban truc thuoc) Tj ET
 endstream endobj
 5 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >> endobj
-6 0 obj << /Length 218 >> stream
-BT /F1 12 Tf 50 720 Td (Thoi gian: Dung 09h00 ngay 25/10/2026. Dia diem tai Hoi truong A tang 3.) Tj -50 -20 Td 50 700 Td (Yeu cau cac don vi gui truoc tai lieu cho Thu ky truoc 17h00 ngay 24/10/2026.) Tj -50 -20 Td ET
+6 0 obj << /Length 195 >> stream
+BT /F1 12 Tf 50 720 Td (Thoi gian: Dung 09h00 ngay 25/10/2026. Dia diem tai Hoi truong A tang 3.) Tj 0 -20 Td (Yeu cau cac don vi gui truoc tai lieu cho Thu ky truoc 17h00 ngay 24/10/2026.) Tj ET
 endstream endobj
 7 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
 xref
@@ -15,5 +15,5 @@ xref
 0000000000 65535 f 
 trailer << /Size 8 /Root 1 0 R >>
 startxref
-919
+873
 %%EOF

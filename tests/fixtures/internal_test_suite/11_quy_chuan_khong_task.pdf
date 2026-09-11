@@ -2,16 +2,16 @@
 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
 2 0 obj << /Type /Pages /Kids [3 0 R 5 0 R 7 0 R] /Count 3 >> endobj
 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 4 0 R >> endobj
-4 0 obj << /Length 143 >> stream
-BT /F1 12 Tf 50 720 Td (QUY DINH TIEU CHUAN AN TOAN THONG TIN) Tj -50 -20 Td 50 700 Td (Dieu 1: Pham vi va doi tuong ap dung.) Tj -50 -20 Td ET
+4 0 obj << /Length 120 >> stream
+BT /F1 12 Tf 50 720 Td (QUY DINH TIEU CHUAN AN TOAN THONG TIN) Tj 0 -20 Td (Dieu 1: Pham vi va doi tuong ap dung.) Tj ET
 endstream endobj
 5 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 6 0 R >> endobj
-6 0 obj << /Length 119 >> stream
-BT /F1 12 Tf 50 720 Td (Dieu 2: Mat khau nguoi dung phai co do dai toi thieu 12 ky tu va doi dinh ky.) Tj -50 -20 Td ET
+6 0 obj << /Length 108 >> stream
+BT /F1 12 Tf 50 720 Td (Dieu 2: Mat khau nguoi dung phai co do dai toi thieu 12 ky tu va doi dinh ky.) Tj ET
 endstream endobj
 7 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 8 0 R >> endobj
-8 0 obj << /Length 104 >> stream
-BT /F1 12 Tf 50 720 Td (Dieu 3: Moi thiet bi phai cai dat phan mem phong chong ma doc.) Tj -50 -20 Td ET
+8 0 obj << /Length 93 >> stream
+BT /F1 12 Tf 50 720 Td (Dieu 3: Moi thiet bi phai cai dat phan mem phong chong ma doc.) Tj ET
 endstream endobj
 9 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
 xref
@@ -19,5 +19,5 @@ xref
 0000000000 65535 f 
 trailer << /Size 10 /Root 1 0 R >>
 startxref
-1094
+1048
 %%EOF

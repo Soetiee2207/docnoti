@@ -93,20 +93,45 @@ export class AnalysisService {
   }
 
   /**
-   * Budgets document pages for full-document summary mode.
-   * If total document characters fit within DEFAULT_SUMMARY_TOKEN_BUDGET.maxContextCharacters,
-   * all pages are preserved intact.
-   * If document exceeds the safe summary budget (e.g. 219 pages / 600k+ chars),
-   * selects a representative bounded window:
+   * Budgets document pages for full-document summary mode using a 4-Tier Layered Strategy:
+   *
+   * Tier 1 (Mandatory Anchors):
    * - Front pages (Cover, Table of Contents, Introduction)
-   * - Middle section sample points distributed evenly
-   * - Final pages (Conclusions, Summary)
-   * Enforces a strict character ceiling without slicing individual pages in half.
+   * - Final pages (Conclusions, Closing provisions, Commitments, Signatures)
+   * - Guarantees that neither start nor conclusion is ever dropped when budget is packed.
+   *
+   * Tier 2 (High-Signal Density Pages):
+   * - Scans intermediate pages for actionable signals (dates, deadlines, milestones, tasks).
+   * - Prioritizes key actionable sections without letting them monopolize coverage.
+   *
+   * Tier 3 (Dynamic Uniform Grid - Zero Blind Spots):
+   * - Divides the middle section into dynamic uniform intervals.
+   * - Picks representative samples across every sector of the document.
+   * - Eliminates fixed gap blind spots (such as the previous 0.45 -> 0.60 void).
+   *
+   * Tier 4 (Deterministic Budget Enforcement):
+   * - Guarantees that total characters strictly respect maxCharacters (never overflowing token budget).
+   * - Keeps whole pages intact (never slicing provenance).
    */
   prepareBudgetedSummaryPages(
     pages: DocumentPageRecord[],
     maxCharacters: number = DEFAULT_SUMMARY_TOKEN_BUDGET.maxContextCharacters
-  ): { selectedPages: DocumentPageRecord[]; isSampled: boolean; totalOriginalChars: number } {
+  ): {
+    selectedPages: DocumentPageRecord[];
+    isSampled: boolean;
+    totalOriginalChars: number;
+    diagnostics?: {
+      totalPages: number;
+      selectedCount: number;
+      frontCount: number;
+      backCount: number;
+      signalCount: number;
+      gridCount: number;
+      totalChars: number;
+      budgetChars: number;
+      pageDistribution: number[];
+    };
+  } {
     const sortedPages = [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
     const totalOriginalChars = sortedPages.reduce(
       (acc, p) => acc + (p.textContent?.length ?? 0),
@@ -114,55 +139,145 @@ export class AnalysisService {
     );
 
     if (totalOriginalChars <= maxCharacters) {
-      return { selectedPages: sortedPages, isSampled: false, totalOriginalChars };
+      return {
+        selectedPages: sortedPages,
+        isSampled: false,
+        totalOriginalChars,
+        diagnostics: {
+          totalPages: sortedPages.length,
+          selectedCount: sortedPages.length,
+          frontCount: sortedPages.length,
+          backCount: 0,
+          signalCount: 0,
+          gridCount: 0,
+          totalChars: totalOriginalChars,
+          budgetChars: maxCharacters,
+          pageDistribution: sortedPages.map((p) => p.pageNumber),
+        },
+      };
     }
 
-    // Document exceeds safe summary budget. Select representative bounded pages.
-    const selectedMap = new Map<number, DocumentPageRecord>();
-
-    // 1. First pages (Cover, Table of Contents, Intro)
+    // Document exceeds safe summary budget. Apply 4-Tier Layered Selection.
     const frontCount = Math.min(sortedPages.length, 4);
-    for (let i = 0; i < frontCount; i++) {
-      const p = sortedPages[i]!;
-      selectedMap.set(p.pageNumber, p);
-    }
+    const frontPages = sortedPages.slice(0, frontCount);
 
-    // 2. Final pages (Summary, Conclusions, Notes)
-    const backCount = Math.min(2, Math.max(0, sortedPages.length - frontCount));
-    for (let i = sortedPages.length - backCount; i < sortedPages.length; i++) {
-      const p = sortedPages[i]!;
-      selectedMap.set(p.pageNumber, p);
-    }
+    const backCount = Math.min(3, Math.max(0, sortedPages.length - frontCount));
+    const backPages = sortedPages.slice(sortedPages.length - backCount);
 
-    // 3. Representative sample points across the body
-    if (sortedPages.length > frontCount + backCount) {
-      const middlePages = sortedPages.slice(frontCount, sortedPages.length - backCount);
-      const sampleSteps = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9];
-      for (const ratio of sampleSteps) {
-        const idx = Math.floor(ratio * middlePages.length);
-        if (middlePages[idx]) {
-          selectedMap.set(middlePages[idx]!.pageNumber, middlePages[idx]!);
+    const middlePages = sortedPages.slice(frontCount, sortedPages.length - backCount);
+
+    // Reserved anchors: Front + Back
+    const anchorMap = new Map<number, DocumentPageRecord>();
+    for (const p of frontPages) anchorMap.set(p.pageNumber, p);
+    for (const p of backPages) anchorMap.set(p.pageNumber, p);
+
+    const anchorChars = Array.from(anchorMap.values()).reduce(
+      (acc, p) => acc + (p.textContent?.length ?? 0),
+      0
+    );
+
+    // If anchors alone exceed budget (extremely dense front/back pages):
+    if (anchorChars > maxCharacters) {
+      const trimmedAnchors: DocumentPageRecord[] = [];
+      let currentLen = 0;
+      // Guarantee at least page 1 and the last page if possible
+      const essential = [frontPages[0]!, backPages[backPages.length - 1]!].filter(Boolean);
+      for (const p of essential) {
+        if (currentLen + (p.textContent?.length ?? 0) <= maxCharacters) {
+          trimmedAnchors.push(p);
+          currentLen += p.textContent?.length ?? 0;
         }
       }
+      return {
+        selectedPages: trimmedAnchors.sort((a, b) => a.pageNumber - b.pageNumber),
+        isSampled: true,
+        totalOriginalChars,
+      };
     }
 
-    // Sort selected candidates by pageNumber ascending
-    const candidates = Array.from(selectedMap.values()).sort((a, b) => a.pageNumber - b.pageNumber);
+    // Tier 2: Content Signal Scoring on Middle Pages
+    const signalRegex = /\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}|hạn chót|thời hạn|deadline|trước ngày|trong vòng|đến ngày|ngày \d{1,2}|tháng \d{1,2})\b/gi;
+    const actionRegex = /\b(nhiệm vụ|phân công|giao cho|chủ trì|phối hợp|hoàn thành|báo cáo|nộp|cam kết|tiểu luận|đề tài|nghiệm thu|kết luận)\b/gi;
 
-    // Filter strictly to budget limit (keep whole pages only, never slice)
-    const selectedPages: DocumentPageRecord[] = [];
-    let currentChars = 0;
+    const scoredMiddlePages = middlePages.map((p) => {
+      const text = p.textContent ?? "";
+      const dateMatches = (text.match(signalRegex) || []).length;
+      const actionMatches = (text.match(actionRegex) || []).length;
+      const score = dateMatches * 3 + actionMatches * 2;
+      return { page: p, score };
+    });
 
-    for (const page of candidates) {
-      const pageLen = page.textContent?.length ?? 0;
-      if (currentChars + pageLen > maxCharacters && selectedPages.length > 0) {
-        break;
+    const highSignalPages = scoredMiddlePages
+      .filter((sp) => sp.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((sp) => sp.page);
+
+    // Allocate remaining budget across middle pages
+    let remainingBudget = maxCharacters - anchorChars;
+    const avgPageLen = Math.max(1, Math.round(totalOriginalChars / sortedPages.length));
+    const allowedMiddlePages = Math.max(1, Math.floor(remainingBudget / avgPageLen));
+
+    // Dedicate up to 40% of middle quota to high-signal hotspots (dates/tasks/deadlines)
+    const signalQuota = Math.min(highSignalPages.length, Math.max(1, Math.floor(allowedMiddlePages * 0.4)));
+    const gridQuota = Math.max(2, allowedMiddlePages - signalQuota);
+
+    // Uniformly distribute grid across the entire span of middlePages from start to finish
+    const gridPages: DocumentPageRecord[] = [];
+    if (middlePages.length > 0) {
+      const step = middlePages.length / gridQuota;
+      for (let i = 0; i < gridQuota; i++) {
+        const centerIdx = Math.min(middlePages.length - 1, Math.floor((i + 0.5) * step));
+        gridPages.push(middlePages[centerIdx]!);
       }
-      selectedPages.push(page);
-      currentChars += pageLen;
     }
 
-    return { selectedPages, isSampled: true, totalOriginalChars };
+    const selectedMiddleMap = new Map<number, DocumentPageRecord>();
+
+    // Add high-signal pages first to capture crucial actionable milestones
+    for (let i = 0; i < signalQuota && i < highSignalPages.length; i++) {
+      const p = highSignalPages[i]!;
+      const pLen = p.textContent?.length ?? 0;
+      if (pLen <= remainingBudget) {
+        selectedMiddleMap.set(p.pageNumber, p);
+        remainingBudget -= pLen;
+      }
+    }
+
+    // Add uniform grid pages spanning the entire document without gaps
+    for (const p of gridPages) {
+      if (selectedMiddleMap.has(p.pageNumber)) continue;
+      const pLen = p.textContent?.length ?? 0;
+      if (pLen <= remainingBudget) {
+        selectedMiddleMap.set(p.pageNumber, p);
+        remainingBudget -= pLen;
+      }
+    }
+
+    // Merge Tier 1 Anchors + Selected Middle Pages
+    const allCandidates = [
+      ...Array.from(anchorMap.values()),
+      ...Array.from(selectedMiddleMap.values()),
+    ].sort((a, b) => a.pageNumber - b.pageNumber);
+
+    const selectedPages = allCandidates;
+    const finalChars = selectedPages.reduce((acc, p) => acc + (p.textContent?.length ?? 0), 0);
+
+    return {
+      selectedPages,
+      isSampled: true,
+      totalOriginalChars,
+      diagnostics: {
+        totalPages: sortedPages.length,
+        selectedCount: selectedPages.length,
+        frontCount: frontPages.length,
+        backCount: backPages.length,
+        signalCount: selectedMiddleMap.size,
+        gridCount: gridPages.length,
+        totalChars: finalChars,
+        budgetChars: maxCharacters,
+        pageDistribution: selectedPages.map((p) => p.pageNumber),
+      },
+    };
   }
 
   /**
