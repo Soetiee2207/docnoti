@@ -1,4 +1,4 @@
-import { useState, useMemo, type DragEvent } from "react"
+import { useState, useEffect, useMemo, type DragEvent } from "react"
 import {
   FileText,
   UploadCloud,
@@ -103,7 +103,7 @@ export function DocumentsView({
     reprocessDocument,
     deleteDocument,
     openPickerAndImport,
-    importFilePaths,
+    setupDragDropListener,
   } = useDocuments()
 
   const [filterText, setFilterText] = useState(searchQuery)
@@ -111,6 +111,14 @@ export function DocumentsView({
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
   const [deletingDoc, setDeletingDoc] = useState<DocumentRecord | null>(null)
   const [isDeleting, setIsDeleting] = useState<boolean>(false)
+
+  useEffect(() => {
+    const cleanup = setupDragDropListener(
+      () => setIsDragOver(true),
+      () => setIsDragOver(false)
+    )
+    return cleanup
+  }, [setupDragDropListener])
 
   const filteredDocs = useMemo(() => {
     if (!filterText.trim()) return documents
@@ -128,15 +136,9 @@ export function DocumentsView({
     setIsDragOver(false)
   }
 
-  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setIsDragOver(false)
-
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length === 0) return
-
-    const paths = files.map((f) => (f as unknown as { path?: string }).path || f.name)
-    await importFilePaths(paths)
   }
 
   // If a document is currently selected for targeted view & analysis

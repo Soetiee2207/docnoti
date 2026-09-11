@@ -17,10 +17,17 @@ from pathlib import Path
 
 MODEL_NAME = "jina-embeddings-v5-text-small"
 EXPECTED_DIMENSIONS = 1024
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+
 DEFAULT_MODEL_PATHS = [
+    os.path.join(PROJECT_ROOT, "models", MODEL_NAME),
+    os.path.join(PROJECT_ROOT, "app_data", "models", MODEL_NAME),
+    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%\com.tauri.dev\models"), MODEL_NAME),
+    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%\docnoti\models"), MODEL_NAME),
+    os.path.join(os.path.expanduser("~"), ".cache", "docnoti", "models", MODEL_NAME),
     os.path.join(os.getcwd(), "models", MODEL_NAME),
     os.path.join(os.getcwd(), "app_data", "models", MODEL_NAME),
-    os.path.join(os.path.expanduser("~"), ".cache", "docnoti", "models", MODEL_NAME),
 ]
 
 def find_local_model_path():

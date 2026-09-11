@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use uuid::Uuid;
 
 #[derive(Serialize)]
@@ -69,6 +69,74 @@ pub fn get_storage_dir(app: &AppHandle) -> Result<PathBuf, String> {
     crate::storage_config::get_documents_dir(app)
 }
 
+/// Resolves document path safely with backward compatibility for folder migrations.
+fn resolve_safe_document_path(app: &AppHandle, storage_path: &str) -> Result<PathBuf, String> {
+    let raw_path = Path::new(storage_path);
+
+    // Reject directory traversal attempts
+    for comp in raw_path.components() {
+        if comp == std::path::Component::ParentDir {
+            return Err("Security violation: path traversal detected".to_string());
+        }
+    }
+
+    let storage_dir = get_storage_dir(app)?;
+    let default_dir = crate::storage_config::get_default_base_dir(app).join("documents");
+
+    // Case 1: Relative path
+    if !raw_path.is_absolute() {
+        let candidate = storage_dir.join(raw_path);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+        let fallback = default_dir.join(raw_path);
+        if fallback.exists() {
+            return Ok(fallback);
+        }
+        return Ok(candidate);
+    }
+
+    // Case 2: Absolute path that exists
+    if raw_path.exists() {
+        let ext = raw_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if ext != "pdf" {
+            return Err("Security violation: target is not a PDF file".to_string());
+        }
+        return Ok(raw_path.to_path_buf());
+    }
+
+    // Case 3: Absolute path that does not exist (e.g. storage directory moved)
+    // Try finding by filename in current storage_dir or default_dir
+    if let Some(file_name) = raw_path.file_name() {
+        let candidate = storage_dir.join(file_name);
+        if candidate.exists() {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[PATH_AUDIT] DOCUMENT_STORAGE relocated: old='{}' found_at='{}'",
+                raw_path.display(),
+                candidate.display()
+            );
+            return Ok(candidate);
+        }
+        let fallback = default_dir.join(file_name);
+        if fallback.exists() {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[PATH_AUDIT] DOCUMENT_STORAGE relocated: old='{}' found_at='{}'",
+                raw_path.display(),
+                fallback.display()
+            );
+            return Ok(fallback);
+        }
+    }
+
+    Ok(raw_path.to_path_buf())
+}
+
 #[tauri::command]
 pub fn import_pdf_file(app: AppHandle, source_path: String) -> Result<ImportedFileInfo, String> {
     let src_path = Path::new(&source_path);
@@ -96,6 +164,13 @@ pub fn import_pdf_file(app: AppHandle, source_path: String) -> Result<ImportedFi
         )
     })?;
 
+    #[cfg(debug_assertions)]
+    eprintln!(
+        "[PATH_AUDIT] DOCUMENT_STORAGE import: src='{}' dest='{}'",
+        src_path.display(),
+        dest_path.display()
+    );
+
     Ok(ImportedFileInfo {
         id: doc_id,
         name: file_name,
@@ -108,17 +183,15 @@ pub fn import_pdf_file(app: AppHandle, source_path: String) -> Result<ImportedFi
 
 #[tauri::command]
 pub fn delete_stored_file(app: AppHandle, storage_path: String) -> Result<(), String> {
-    let storage_dir = get_storage_dir(&app)?;
-    let default_dir = crate::storage_config::get_default_base_dir(&app).join("documents");
-    let target_path = Path::new(&storage_path);
-
-    // Security guard: ensure target is strictly inside managed storage directory (configured or default)
-    if !target_path.starts_with(&storage_dir) && !target_path.starts_with(&default_dir) {
-        return Err("Security violation: target path is not within managed storage".to_string());
-    }
+    let target_path = resolve_safe_document_path(&app, &storage_path)?;
 
     if target_path.exists() {
-        fs::remove_file(target_path)
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "[PATH_AUDIT] DOCUMENT_STORAGE delete: path='{}'",
+            target_path.display()
+        );
+        fs::remove_file(&target_path)
             .map_err(|e| format!("Failed to remove stored file {}: {e}", target_path.display()))?;
     }
 
@@ -127,19 +200,22 @@ pub fn delete_stored_file(app: AppHandle, storage_path: String) -> Result<(), St
 
 #[tauri::command]
 pub fn read_stored_file(app: AppHandle, storage_path: String) -> Result<Vec<u8>, String> {
-    let storage_dir = get_storage_dir(&app)?;
-    let default_dir = crate::storage_config::get_default_base_dir(&app).join("documents");
-    let target_path = Path::new(&storage_path);
-
-    // Security guard: ensure target is strictly inside managed storage directory (configured or default)
-    if !target_path.starts_with(&storage_dir) && !target_path.starts_with(&default_dir) {
-        return Err("Security violation: target path is not within managed storage".to_string());
-    }
+    let target_path = resolve_safe_document_path(&app, &storage_path)?;
 
     if !target_path.exists() {
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "[PATH_AUDIT] DOCUMENT_STORAGE read failed: path='{}' does not exist",
+            target_path.display()
+        );
         return Err(format!("Stored file does not exist: {}", target_path.display()));
     }
 
-    fs::read(target_path).map_err(|e| format!("Failed to read stored file {}: {e}", target_path.display()))
-}
+    #[cfg(debug_assertions)]
+    eprintln!(
+        "[PATH_AUDIT] DOCUMENT_STORAGE read: path='{}' exists=true is_file=true",
+        target_path.display()
+    );
 
+    fs::read(&target_path).map_err(|e| format!("Failed to read stored file {}: {e}", target_path.display()))
+}

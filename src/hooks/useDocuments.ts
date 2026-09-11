@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { getAppServices } from "@/services"
 import type { DocumentRecord } from "@/db/schema"
 import { open } from "@tauri-apps/plugin-dialog"
+import { getCurrentWebview } from "@tauri-apps/api/webview"
 
 function isTauriEnvironment(): boolean {
   return (
@@ -175,6 +176,46 @@ export function useDocuments() {
     [refresh]
   )
 
+  const setupDragDropListener = useCallback(
+    (onEnter: () => void, onLeave: () => void) => {
+      if (!isTauriEnvironment()) return () => {}
+
+      let cancelled = false
+      let unlistenFn: (() => void) | null = null
+
+      getCurrentWebview()
+        .onDragDropEvent(async (event) => {
+          if (cancelled) return
+          const { type } = event.payload
+          if (type === "enter") {
+            onEnter()
+          } else if (type === "leave") {
+            onLeave()
+          } else if (type === "drop") {
+            onLeave()
+            const paths = (event.payload as { paths: string[] }).paths
+            if (paths && paths.length > 0) {
+              await importFilePaths(paths)
+            }
+          }
+        })
+        .then((fn) => {
+          if (cancelled) {
+            fn()
+          } else {
+            unlistenFn = fn
+          }
+        })
+        .catch(console.error)
+
+      return () => {
+        cancelled = true
+        unlistenFn?.()
+      }
+    },
+    [importFilePaths]
+  )
+
   return {
     documents,
     loading,
@@ -187,6 +228,7 @@ export function useDocuments() {
     processPendingJobs,
     importFilePaths,
     openPickerAndImport,
+    setupDragDropListener,
   }
 }
 

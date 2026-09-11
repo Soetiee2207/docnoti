@@ -52,6 +52,19 @@ pub fn run() {
             let config = storage_config::load_storage_config(app.handle());
             let db_dir = storage_config::resolve_database_dir(app.handle(), &config);
             let db_path = db_dir.join("docnoti.db");
+
+            // Backward-compatibility: If db does not exist, copy from legacy com.tauri.dev if present
+            if !db_path.exists() {
+                if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+                    let legacy_db = std::path::PathBuf::from(&local_app_data)
+                        .join("com.tauri.dev")
+                        .join("docnoti.db");
+                    if legacy_db.exists() {
+                        let _ = fs::copy(&legacy_db, &db_path);
+                    }
+                }
+            }
+
             let conn = Connection::open(&db_path)
                 .unwrap_or_else(|e| panic!("failed to open sqlite database at {}: {e}", db_path.display()));
 

@@ -103,7 +103,20 @@ pub fn validate_directory_path(path_str: &str) -> Result<PathBuf, String> {
 }
 
 pub fn load_storage_config(app: &AppHandle) -> StorageConfig {
-    let config_path = get_config_file_path(app);
+    let mut config_path = get_config_file_path(app);
+    if !config_path.exists() {
+        // Backward-compatibility: Check legacy com.tauri.dev config path
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            let legacy_path = PathBuf::from(local_app_data)
+                .join("com.tauri.dev")
+                .join("storage_config.json");
+            if legacy_path.exists() {
+                #[cfg(debug_assertions)]
+                eprintln!("[PATH_AUDIT] Loading legacy storage_config from: {}", legacy_path.display());
+                config_path = legacy_path;
+            }
+        }
+    }
     if !config_path.exists() {
         return StorageConfig {
             version: 1,
